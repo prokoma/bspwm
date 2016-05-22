@@ -1,0 +1,25 @@
+Source: bspwm
+Maintainer: Nobuhiro Iwamatsu <iwamatsu@debian.org>
+Uploaders: Raphael mota <raphaelmota.ti@gmail.com>
+Priority: extra
+Section: x11
+Build-Depends: debhelper (>= 9), xcb,
+	libxcb-util0-dev, libxcb-ewmh-dev, libxcb-randr0-dev,
+	libxcb-icccm4-dev, libxcb-keysyms1-dev, libxcb-xinerama0-dev
+Standards-Version: 3.9.8
+Homepage: https://github.com/windelicato/bspwm
+Vcs-Git: git://anonscm.debian.org/collab-maint/bspwm.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/bspwm.git;a=summary
+
+Package: bspwm
+Architecture: any
+Section: x11
+Depends: ${shlibs:Depends},
+ ${misc:Depends},
+ x11-utils,
+ sxhkd
+Recommends: lemonbar, xdo
+Provides: x-window-manager,
+Description: Binary space partitioning window manager
+ Bspwm is a tiling window manager that represents windows as the
+ leaves of a full binary tree.

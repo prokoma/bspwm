@@ -1,0 +1,5 @@
+bspwm (0.9.1-1) unstable; urgency=medium
+
+  * Initial release. (Closes: #815891)
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Sun, 22 May 2016 10:08:59 +0900
