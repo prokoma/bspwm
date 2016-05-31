@@ -1,6 +1,7 @@
 bspwm (0.9.1-2) unstable; urgency=medium
 
   * Remove xcb from Build-Depends.
+  * Change URL of upstream to https://github.com/baskerville/bspwm.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 31 May 2016 20:00:48 +0900
 

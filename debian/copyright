@@ -1,7 +1,7 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 upstream-name: bspwm
 upstream-contact: Bastien Dejean <nihilhill@gmail.com>
-Source: https://github.com/windelicato/bspwm
+Source: https://github.com/baskerville/bspwm
 
 Files: *
 Copyright: 2012, Bastien Dejean <nihilhill@gmail.com>
