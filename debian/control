@@ -1,6 +1,6 @@
 Source: bspwm
 Maintainer: Nobuhiro Iwamatsu <iwamatsu@debian.org>
-Uploaders: Raphael mota <raphaelmota.ti@gmail.com>
+Uploaders: Raphael Mota Ramos <raphaelmota.ti@gmail.com>
 Priority: extra
 Section: x11
 Build-Depends: debhelper (>= 9),
