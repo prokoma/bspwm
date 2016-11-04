@@ -1,6 +1,8 @@
 bspwm (0.9.2-1) unstable; urgency=medium
 
   * New upstream release.
+  * Update debian/control.
+    - Use a secure transport for the Vcs-Git and Vcs-Browser URL.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Fri, 04 Nov 2016 21:16:01 +0900
 
