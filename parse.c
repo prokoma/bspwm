@@ -153,6 +153,66 @@ bool parse_flip(char *s, flip_t *f)
 	return false;
 }
 
+bool parse_resize_handle(char *s, resize_handle_t *h)
+{
+	if (streq("left", s)) {
+		*h = HANDLE_LEFT;
+		return true;
+	} else if (streq("top", s)) {
+		*h = HANDLE_TOP;
+		return true;
+	} else if (streq("right", s)) {
+		*h = HANDLE_RIGHT;
+		return true;
+	} else if (streq("bottom", s)) {
+		*h = HANDLE_BOTTOM;
+		return true;
+	} else if (streq("top_left", s)) {
+		*h = HANDLE_TOP_LEFT;
+		return true;
+	} else if (streq("top_right", s)) {
+		*h = HANDLE_TOP_RIGHT;
+		return true;
+	} else if (streq("bottom_right", s)) {
+		*h = HANDLE_BOTTOM_RIGHT;
+		return true;
+	} else if (streq("bottom_left", s)) {
+		*h = HANDLE_BOTTOM_LEFT;
+		return true;
+	}
+	return false;
+}
+
+bool parse_modifier_mask(char *s, uint16_t *m)
+{
+	if (strcmp(s, "shift") == 0) {
+		*m = XCB_MOD_MASK_SHIFT;
+		return true;
+	} else if (strcmp(s, "control") == 0) {
+		*m = XCB_MOD_MASK_CONTROL;
+		return true;
+	} else if (strcmp(s, "lock") == 0) {
+		*m = XCB_MOD_MASK_LOCK;
+		return true;
+	} else if (strcmp(s, "mod1") == 0) {
+		*m = XCB_MOD_MASK_1;
+		return true;
+	} else if (strcmp(s, "mod2") == 0) {
+		*m = XCB_MOD_MASK_2;
+		return true;
+	} else if (strcmp(s, "mod3") == 0) {
+		*m = XCB_MOD_MASK_3;
+		return true;
+	} else if (strcmp(s, "mod4") == 0) {
+		*m = XCB_MOD_MASK_4;
+		return true;
+	} else if (strcmp(s, "mod5") == 0) {
+		*m = XCB_MOD_MASK_5;
+		return true;
+	}
+	return false;
+}
+
 bool parse_pointer_action(char *s, pointer_action_t *a)
 {
 	if (streq("move", s)) {
@@ -166,6 +226,9 @@ bool parse_pointer_action(char *s, pointer_action_t *a)
 		return true;
 	} else if (streq("focus", s)) {
 		*a = ACTION_FOCUS;
+		return true;
+	} else if (streq("none", s)) {
+		*a = ACTION_NONE;
 		return true;
 	}
 	return false;
@@ -198,16 +261,15 @@ bool parse_degree(char *s, int *d)
 	}
 }
 
-bool parse_id(char *s, uint32_t *i)
+bool parse_id(char *s, uint32_t *id)
 {
 	char *end;
 	errno = 0;
-	uint32_t ret = strtol(s, &end, 0);
+	uint32_t v = strtol(s, &end, 0);
 	if (errno != 0 || *end != '\0') {
 		return false;
-	} else {
-		*i = ret;
 	}
+	*id = v;
 	return true;
 }
 
@@ -229,14 +291,9 @@ bool parse_bool_declaration(char *s, char **key, bool *value, alter_state_t *sta
 	return false;
 }
 
-bool parse_index(char *s, int *i)
+bool parse_index(char *s, uint16_t *idx)
 {
-	int idx;
-	if (sscanf(s, "^%i", &idx) != 1 || idx < 1) {
-		return false;
-	}
-	*i = idx;
-	return true;
+	return (sscanf(s, "^%hu", idx) == 1);
 }
 
 bool parse_rectangle(char *s, xcb_rectangle_t *r)
@@ -263,6 +320,8 @@ bool parse_subscriber_mask(char *s, subscriber_mask_t *mask)
 		*mask = SBSC_MASK_DESKTOP;
 	} else if (streq("monitor", s)) {
 		*mask = SBSC_MASK_MONITOR;
+	} else if (streq("pointer_action", s)) {
+		*mask = SBSC_MASK_POINTER_ACTION;
 	} else if (streq("node_manage", s)) {
 		*mask = SBSC_MASK_NODE_MANAGE;
 	} else if (streq("node_unmanage", s)) {
@@ -382,15 +441,20 @@ bool parse_node_modifiers(char *desc, node_select_t *sel)
 		GET_MOD(automatic)
 		GET_MOD(focused)
 		GET_MOD(local)
+		GET_MOD(active)
 		GET_MOD(leaf)
+		GET_MOD(window)
 		GET_MOD(pseudo_tiled)
 		GET_MOD(floating)
 		GET_MOD(fullscreen)
-		GET_MOD(locked)
+		GET_MOD(hidden)
 		GET_MOD(sticky)
 		GET_MOD(private)
+		GET_MOD(locked)
 		GET_MOD(urgent)
 		GET_MOD(same_class)
+		GET_MOD(descendant_of)
+		GET_MOD(ancestor_of)
 		GET_MOD(below)
 		GET_MOD(normal)
 		GET_MOD(above)

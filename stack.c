@@ -32,7 +32,7 @@
 
 stacking_list_t *make_stack(node_t *n)
 {
-	stacking_list_t *s = malloc(sizeof(stacking_list_t));
+	stacking_list_t *s = calloc(1, sizeof(stacking_list_t));
 	s->node = n;
 	s->prev = s->next = NULL;
 	return s;
@@ -165,7 +165,7 @@ stacking_list_t *limit_below(node_t *n)
 void stack(desktop_t *d, node_t *n, bool focused)
 {
 	for (node_t *f = first_extrema(n); f != NULL; f = next_leaf(f, n)) {
-		if (IS_FLOATING(f->client) && !auto_raise) {
+		if (f->client == NULL || (IS_FLOATING(f->client) && !auto_raise)) {
 			continue;
 		}
 
@@ -180,31 +180,31 @@ void stack(desktop_t *d, node_t *n, bool focused)
 			if (i < 0 || (i == 0 && !focused)) {
 				stack_insert_before(s, f);
 				window_below(f->id, s->node->id);
-				put_status(SBSC_MASK_NODE_STACK, "node_stack 0x%X below 0x%X\n", f->id, s->node->id);
+				put_status(SBSC_MASK_NODE_STACK, "node_stack 0x%08X below 0x%08X\n", f->id, s->node->id);
 			} else {
 				stack_insert_after(s, f);
 				window_above(f->id, s->node->id);
-				put_status(SBSC_MASK_NODE_STACK, "node_stack 0x%X above 0x%X\n", f->id, s->node->id);
+				put_status(SBSC_MASK_NODE_STACK, "node_stack 0x%08X above 0x%08X\n", f->id, s->node->id);
 			}
 		}
 	}
 
 	ewmh_update_client_list(true);
-	restack_presel_feedback(d);
+	restack_presel_feedbacks(d);
 }
 
-void restack_presel_feedback(desktop_t *d)
+void restack_presel_feedbacks(desktop_t *d)
 {
 	stacking_list_t *s = stack_tail;
 	while (s != NULL && !IS_TILED(s->node->client)) {
 		s = s->prev;
 	}
 	if (s != NULL) {
-		restack_presel_feedback_in(d->root, s->node);
+		restack_presel_feedbacks_in(d->root, s->node);
 	}
 }
 
-void restack_presel_feedback_in(node_t *r, node_t *n)
+void restack_presel_feedbacks_in(node_t *r, node_t *n)
 {
 	if (r == NULL) {
 		return;
@@ -212,7 +212,7 @@ void restack_presel_feedback_in(node_t *r, node_t *n)
 		if (r->presel != NULL) {
 			window_above(r->presel->feedback, n->id);
 		}
-		restack_presel_feedback_in(r->first_child, n);
-		restack_presel_feedback_in(r->second_child, n);
+		restack_presel_feedbacks_in(r->first_child, n);
+		restack_presel_feedbacks_in(r->second_child, n);
 	}
 }

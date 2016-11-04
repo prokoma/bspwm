@@ -34,6 +34,13 @@ typedef enum {
 	DOMAIN_NODE
 } domain_t;
 
+enum {
+	SELECTOR_OK,
+	SELECTOR_INVALID,
+	SELECTOR_BAD_MODIFIERS,
+	SELECTOR_BAD_DESCRIPTOR
+};
+
 void query_tree(FILE *rsp);
 void query_monitor(monitor_t *m, FILE *rsp);
 void query_desktop(desktop_t *d, FILE *rsp);
@@ -41,25 +48,29 @@ void query_node(node_t *n, FILE *rsp);
 void query_presel(presel_t *p, FILE *rsp);
 void query_client(client_t *c, FILE *rsp);
 void query_rectangle(xcb_rectangle_t r, FILE *rsp);
-void query_wm_state(xcb_atom_t *wm_state, int wm_states_count, FILE *rsp);
+void query_padding(padding_t p, FILE *rsp);
 void query_history(FILE *rsp);
 void query_coordinates(coordinates_t *loc, FILE *rsp);
 void query_stack(FILE *rsp);
-void query_node_ids(coordinates_t loc, node_select_t *sel, FILE *rsp);
-void query_node_ids_in(node_t *n, desktop_t *d, monitor_t *m, coordinates_t loc, node_select_t *sel, FILE *rsp);
-void query_desktop_names(coordinates_t loc, desktop_select_t *sel, FILE *rsp);
-void query_monitor_names(coordinates_t loc, monitor_select_t *sel, FILE *rsp);
+int query_node_ids(coordinates_t *ref, coordinates_t *trg, node_select_t *sel, FILE *rsp);
+int query_node_ids_in(node_t *n, desktop_t *d, monitor_t *m, coordinates_t *ref, coordinates_t *trg, node_select_t *sel, FILE *rsp);
+int query_desktop_ids(coordinates_t *ref, coordinates_t *trg, desktop_select_t *sel, FILE *rsp);
+int query_monitor_ids(coordinates_t *ref, coordinates_t *trg, monitor_select_t *sel, FILE *rsp);
+void print_modifier_mask(uint16_t m, FILE *rsp);
+void print_pointer_action(pointer_action_t a, FILE *rsp);
 node_select_t make_node_select(void);
 desktop_select_t make_desktop_select(void);
 monitor_select_t make_monitor_select(void);
-bool node_from_desc(char *desc, coordinates_t *ref, coordinates_t *dst);
-bool desktop_from_desc(char *desc, coordinates_t *ref, coordinates_t *dst);
-bool monitor_from_desc(char *desc, coordinates_t *ref, coordinates_t *dst);
+int node_from_desc(char *desc, coordinates_t *ref, coordinates_t *dst);
+int desktop_from_desc(char *desc, coordinates_t *ref, coordinates_t *dst);
+int monitor_from_desc(char *desc, coordinates_t *ref, coordinates_t *dst);
 bool locate_window(xcb_window_t win, coordinates_t *loc);
 bool locate_desktop(char *name, coordinates_t *loc);
 bool locate_monitor(char *name, coordinates_t *loc);
-bool desktop_from_index(int i, coordinates_t *loc, monitor_t *mm);
-bool monitor_from_index(int i, coordinates_t *loc);
+bool desktop_from_id(uint32_t id, coordinates_t *loc, monitor_t *mm);
+bool desktop_from_index(uint16_t idx, coordinates_t *loc, monitor_t *mm);
+bool monitor_from_id(uint32_t id, coordinates_t *loc);
+bool monitor_from_index(int idx, coordinates_t *loc);
 bool node_matches(coordinates_t *loc, coordinates_t *ref, node_select_t sel);
 bool desktop_matches(coordinates_t *loc, coordinates_t *ref, desktop_select_t sel);
 bool monitor_matches(coordinates_t *loc, __attribute__((unused)) coordinates_t *ref, monitor_select_t sel);

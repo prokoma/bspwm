@@ -112,17 +112,15 @@ bool restore_tree(const char *file_path)
 	}
 
 	jsmntok_t *t = tokens + 1;
-	char *focusedMonitorName = NULL, *primaryMonitorName = NULL;
+	uint32_t focused_monitor_id = 0, primary_monitor_id = 0;
 
 	for (int i = 0; i < num; i++) {
-		if (keyeq("focusedMonitorName", t, json)) {
-			free(focusedMonitorName);
-			focusedMonitorName = copy_string(t+1, json);
+		if (keyeq("focusedMonitorId", t, json)) {
 			t++;
-		} else if (keyeq("primaryMonitorName", t, json)) {
-			free(primaryMonitorName);
-			primaryMonitorName = copy_string(t+1, json);
+			sscanf(json + t->start, "%u", &focused_monitor_id);
+		} else if (keyeq("primaryMonitorId", t, json)) {
 			t++;
+			sscanf(json + t->start, "%u", &primary_monitor_id);
 		} else if (keyeq("clientsCount", t, json)) {
 			t++;
 			sscanf(json + t->start, "%u", &clients_count);
@@ -133,7 +131,7 @@ bool restore_tree(const char *file_path)
 			for (int j = 0; j < s; j++) {
 				monitor_t *m = restore_monitor(&t, json);
 				if (m->desk == NULL) {
-					add_desktop(m, make_desktop(NULL));
+					add_desktop(m, make_desktop(NULL, XCB_NONE));
 				}
 				add_monitor(m);
 			}
@@ -150,28 +148,29 @@ bool restore_tree(const char *file_path)
 		t++;
 	}
 
-	if (focusedMonitorName != NULL) {
+	if (focused_monitor_id != 0) {
 		coordinates_t loc;
-		if (locate_monitor(focusedMonitorName, &loc)) {
+		if (monitor_from_id(focused_monitor_id, &loc)) {
 			mon = loc.monitor;
 		}
 	}
 
-	if (primaryMonitorName != NULL) {
+	if (primary_monitor_id != 0) {
 		coordinates_t loc;
-		if (locate_monitor(primaryMonitorName, &loc)) {
+		if (monitor_from_id(primary_monitor_id, &loc)) {
 			pri_mon = loc.monitor;
 		}
 	}
 
-	free(focusedMonitorName);
-	free(primaryMonitorName);
-
 	for (monitor_t *m = mon_head; m != NULL; m = m->next) {
 		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
-			refresh_presel_feebacks_in(d->root, d, m);
-			restack_presel_feedback(d);
+			refresh_presel_feedbacks(m, d, d->root);
+			restack_presel_feedbacks(d);
 			for (node_t *n = first_extrema(d->root); n != NULL; n = next_leaf(n, d->root)) {
+				if (n->client == NULL) {
+					continue;
+				}
+				initialize_client(n);
 				uint32_t values[] = {CLIENT_EVENT_MASK | (focus_follows_pointer ? XCB_EVENT_MASK_ENTER_WINDOW : 0)};
 				xcb_change_window_attributes(dpy, n->id, XCB_CW_EVENT_MASK, values);
 			}
@@ -214,7 +213,7 @@ bool restore_tree(const char *file_path)
 #define RESTORE_ANY(k, p, f) \
 	} else if (keyeq(#k, *t, json)) { \
 		(*t)++; \
-		char *val = copy_string(*t, json); \
+		char *val = copy_string(json + (*t)->start, (*t)->end - (*t)->start); \
 		f(val, p); \
 		free(val);
 
@@ -224,29 +223,29 @@ monitor_t *restore_monitor(jsmntok_t **t, char *json)
 {
 	int num = (*t)->size;
 	(*t)++;
-	monitor_t *m = make_monitor(NULL);
-	char *focusedDesktopName = NULL;
+	monitor_t *m = make_monitor(NULL, NULL, UINT32_MAX);
+	uint32_t focused_desktop_id = 0;
 
 	for (int i = 0; i < num; i++) {
 		if (keyeq("name", *t, json)) {
 			(*t)++;
 			snprintf(m->name, (*t)->end - (*t)->start + 1, "%s", json + (*t)->start);
 		RESTORE_UINT(id, &m->id)
+		RESTORE_UINT(randrId, &m->randr_id)
 		RESTORE_BOOL(wired, &m->wired)
-		RESTORE_INT(topPadding, &m->top_padding)
-		RESTORE_INT(rightPadding, &m->right_padding)
-		RESTORE_INT(bottomPadding, &m->bottom_padding)
-		RESTORE_INT(leftPadding, &m->left_padding)
 		RESTORE_UINT(stickyCount, &m->sticky_count)
+		RESTORE_INT(windowGap, &m->window_gap)
+		RESTORE_UINT(borderWidth, &m->border_width)
+		RESTORE_UINT(focusedDesktopId, &focused_desktop_id)
+		} else if (keyeq("padding", *t, json)) {
+			(*t)++;
+			restore_padding(&m->padding, t, json);
+			continue;
 		} else if (keyeq("rectangle", *t, json)) {
 			(*t)++;
 			restore_rectangle(&m->rectangle, t, json);
 			update_root(m, &m->rectangle);
 			continue;
-		} else if (keyeq("focusedDesktopName", *t, json)) {
-			free(focusedDesktopName);
-			(*t)++;
-			focusedDesktopName = copy_string(*t, json);
 		} else if (keyeq("desktops", *t, json)) {
 			(*t)++;
 			int s = (*t)->size;
@@ -263,16 +262,14 @@ monitor_t *restore_monitor(jsmntok_t **t, char *json)
 		(*t)++;
 	}
 
-	if (focusedDesktopName != NULL) {
+	if (focused_desktop_id != 0) {
 		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
-			if (streq(focusedDesktopName, d->name)) {
+			if (d->id == focused_desktop_id) {
 				m->desk = d;
 				break;
 			}
 		}
 	}
-
-	free(focusedDesktopName);
 
 	return m;
 }
@@ -281,30 +278,24 @@ desktop_t *restore_desktop(jsmntok_t **t, char *json)
 {
 	int s = (*t)->size;
 	(*t)++;
-	desktop_t *d = make_desktop(NULL);
+	desktop_t *d = make_desktop(NULL, UINT32_MAX);
 	xcb_window_t focusedNodeId = XCB_NONE;
 
 	for (int i = 0; i < s; i++) {
 		if (keyeq("name", *t, json)) {
 			(*t)++;
 			snprintf(d->name, (*t)->end - (*t)->start + 1, "%s", json + (*t)->start);
-		} else if (keyeq("layout", *t, json)) {
-			(*t)++;
-			char *val = copy_string(*t, json);
-			layout_t lyt;
-			if (parse_layout(val, &lyt)) {
-				d->layout = lyt;
-			}
-			free(val);
-		RESTORE_INT(topPadding, &d->top_padding)
-		RESTORE_INT(rightPadding, &d->right_padding)
-		RESTORE_INT(bottomPadding, &d->bottom_padding)
-		RESTORE_INT(leftPadding, &d->left_padding)
+		RESTORE_UINT(id, &d->id)
+		RESTORE_ANY(layout, &d->layout, parse_layout)
 		RESTORE_INT(windowGap, &d->window_gap)
 		RESTORE_UINT(borderWidth, &d->border_width)
 		} else if (keyeq("focusedNodeId", *t, json)) {
 			(*t)++;
 			sscanf(json + (*t)->start, "%u", &focusedNodeId);
+		} else if (keyeq("padding", *t, json)) {
+			(*t)++;
+			restore_padding(&d->padding, t, json);
+			continue;
 		} else if (keyeq("root", *t, json)) {
 			(*t)++;
 			d->root = restore_node(t, json);
@@ -342,6 +333,7 @@ node_t *restore_node(jsmntok_t **t, char *json)
 			RESTORE_DOUBLE(splitRatio, &n->split_ratio)
 			RESTORE_INT(birthRotation, &n->birth_rotation)
 			RESTORE_BOOL(vacant, &n->vacant)
+			RESTORE_BOOL(hidden, &n->hidden)
 			RESTORE_BOOL(sticky, &n->sticky)
 			RESTORE_BOOL(private, &n->private)
 			RESTORE_BOOL(locked, &n->locked)
@@ -432,18 +424,7 @@ client_t *restore_client(jsmntok_t **t, char *json)
 			RESTORE_ANY(lastLayer, &c->last_layer, parse_stack_layer)
 			RESTORE_UINT(borderWidth, &c->border_width)
 			RESTORE_BOOL(urgent, &c->urgent)
-			RESTORE_BOOL(visible, &c->visible)
-			RESTORE_BOOL(icccmFocus, &c->icccm_focus)
-			RESTORE_BOOL(icccmInput, &c->icccm_input)
-			RESTORE_USINT(minWidth, &c->min_width)
-			RESTORE_USINT(maxWidth, &c->max_width)
-			RESTORE_USINT(minHeight, &c->min_height)
-			RESTORE_USINT(maxHeight, &c->max_height)
-			RESTORE_INT(wmStatesCount, &c->wm_states_count)
-			} else if (keyeq("wmState", *t, json)) {
-				(*t)++;
-				restore_wm_state(c->wm_state, t, json);
-				continue;
+			RESTORE_BOOL(shown, &c->shown)
 			} else if (keyeq("tiledRectangle", *t, json)) {
 				(*t)++;
 				restore_rectangle(&c->tiled_rectangle, t, json);
@@ -487,6 +468,29 @@ void restore_rectangle(xcb_rectangle_t *r, jsmntok_t **t, char *json)
 	}
 }
 
+void restore_padding(padding_t *p, jsmntok_t **t, char *json)
+{
+	int s = (*t)->size;
+	(*t)++;
+
+	for (int i = 0; i < s; i++) {
+		if (keyeq("top", *t, json)) {
+			(*t)++;
+			sscanf(json + (*t)->start, "%i", &p->top);
+		} else if (keyeq("right", *t, json)) {
+			(*t)++;
+			sscanf(json + (*t)->start, "%i", &p->right);
+		} else if (keyeq("bottom", *t, json)) {
+			(*t)++;
+			sscanf(json + (*t)->start, "%i", &p->bottom);
+		} else if (keyeq("left", *t, json)) {
+			(*t)++;
+			sscanf(json + (*t)->start, "%i", &p->left);
+		}
+		(*t)++;
+	}
+}
+
 void restore_history(jsmntok_t **t, char *json)
 {
 	int s = (*t)->size;
@@ -505,23 +509,21 @@ void restore_coordinates(coordinates_t *loc, jsmntok_t **t, char *json)
 {
 	int s = (*t)->size;
 	(*t)++;
+	uint32_t id = 0;
 
 	for (int i = 0; i < s; i++) {
-		if (keyeq("monitorName", *t, json)) {
+		if (keyeq("monitorId", *t, json)) {
 			(*t)++;
-			char *name = copy_string(*t, json);
-			loc->monitor = find_monitor(name);
-			free(name);
-		} else if (keyeq("desktopName", *t, json)) {
+			sscanf(json + (*t)->start, "%u", &id);
+			loc->monitor = find_monitor(id);
+		} else if (keyeq("desktopId", *t, json)) {
 			(*t)++;
-			char *name = copy_string(*t, json);
-			loc->desktop = find_desktop_in(name, loc->monitor);
-			free(name);
+			sscanf(json + (*t)->start, "%u", &id);
+			loc->desktop = find_desktop_in(id, loc->monitor);
 		} else if (keyeq("nodeId", *t, json)) {
 			(*t)++;
-			uint32_t id;
 			sscanf(json + (*t)->start, "%u", &id);
-			loc->node = find_by_id_in(loc->desktop!=NULL?loc->desktop->root:NULL, id);
+			loc->node = find_by_id_in(loc->desktop != NULL ? loc->desktop->root : NULL, id);
 		}
 		(*t)++;
 	}
@@ -543,17 +545,6 @@ void restore_stack(jsmntok_t **t, char *json)
 	}
 }
 
-void restore_wm_state(xcb_atom_t *w, jsmntok_t **t, char *json)
-{
-	int s = (*t)->size;
-	(*t)++;
-
-	for (int i = 0; i < s; i++) {
-		sscanf(json + (*t)->start, "%u", &w[i]);
-		(*t)++;
-	}
-}
-
 #undef RESTORE_INT
 #undef RESTORE_UINT
 #undef RESTORE_USINT
@@ -565,17 +556,4 @@ bool keyeq(char *s, jsmntok_t *key, char *json)
 {
 	size_t n = key->end - key->start;
 	return (strlen(s) == n && strncmp(s, json + key->start, n) == 0);
-}
-
-char *copy_string(jsmntok_t *tok, char *json)
-{
-	size_t len = tok->end - tok->start + 1;
-	char *res = malloc(len * sizeof(char));
-	if (res == NULL) {
-		perror("Copy string: malloc");
-		return NULL;
-	}
-	strncpy(res, json+tok->start, len-1);
-	res[len-1] = '\0';
-	return res;
 }

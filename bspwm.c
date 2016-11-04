@@ -39,6 +39,7 @@
 #include "monitor.h"
 #include "settings.h"
 #include "messages.h"
+#include "pointer.h"
 #include "events.h"
 #include "common.h"
 #include "window.h"
@@ -56,9 +57,9 @@ int main(int argc, char *argv[])
 	struct sockaddr_un sock_address;
 	char msg[BUFSIZ] = {0};
 	xcb_generic_event_t *event;
-	char opt;
+	int opt;
 
-	while ((opt = getopt(argc, argv, "hvc:")) != (char)-1) {
+	while ((opt = getopt(argc, argv, "hvc:")) != -1) {
 		switch (opt) {
 			case 'h':
 				printf(WM_NAME " [-h|-v|-c CONFIG_PATH]\n");
@@ -73,6 +74,26 @@ int main(int argc, char *argv[])
 				break;
 		}
 	}
+
+	if (config_path[0] == '\0') {
+		char *config_home = getenv(CONFIG_HOME_ENV);
+		if (config_home != NULL) {
+			snprintf(config_path, sizeof(config_path), "%s/%s/%s", config_home, WM_NAME, CONFIG_NAME);
+		} else {
+			snprintf(config_path, sizeof(config_path), "%s/%s/%s/%s", getenv("HOME"), ".config", WM_NAME, CONFIG_NAME);
+		}
+	}
+
+	dpy = xcb_connect(NULL, &default_screen);
+
+	if (!check_connection(dpy)) {
+		exit(EXIT_FAILURE);
+	}
+
+	load_settings();
+	setup();
+
+	dpy_fd = xcb_get_file_descriptor(dpy);
 
 	char *sp = getenv(SOCKET_ENV_VAR);
 	if (sp != NULL) {
@@ -103,26 +124,6 @@ int main(int argc, char *argv[])
 	if (listen(sock_fd, SOMAXCONN) == -1) {
 		err("Couldn't listen to the socket.\n");
 	}
-
-	if (config_path[0] == '\0') {
-		char *config_home = getenv(CONFIG_HOME_ENV);
-		if (config_home != NULL) {
-			snprintf(config_path, sizeof(config_path), "%s/%s/%s", config_home, WM_NAME, CONFIG_NAME);
-		} else {
-			snprintf(config_path, sizeof(config_path), "%s/%s/%s/%s", getenv("HOME"), ".config", WM_NAME, CONFIG_NAME);
-		}
-	}
-
-	dpy = xcb_connect(NULL, &default_screen);
-
-	if (!check_connection(dpy)) {
-		exit(EXIT_FAILURE);
-	}
-
-	load_settings();
-	setup();
-
-	dpy_fd = xcb_get_file_descriptor(dpy);
 
 	signal(SIGINT, sig_handler);
 	signal(SIGHUP, sig_handler);
@@ -166,14 +167,7 @@ int main(int argc, char *argv[])
 					msg[n] = '\0';
 					FILE *rsp = fdopen(cli_fd, "w");
 					if (rsp != NULL) {
-						int ret = handle_message(msg, n, rsp);
-						if (ret != MSG_SUBSCRIBE) {
-							if (ret != MSG_SUCCESS) {
-								fprintf(rsp, "%c", ret);
-							}
-							fflush(rsp);
-							fclose(rsp);
-						}
+						handle_message(msg, n, rsp);
 					} else {
 						warn("Can't open the client socket as file.\n");
 						close(cli_fd);
@@ -198,9 +192,9 @@ int main(int argc, char *argv[])
 	cleanup();
 	close(sock_fd);
 	unlink(socket_path);
+	ungrab_buttons();
 	xcb_ewmh_connection_wipe(ewmh);
 	xcb_destroy_window(dpy, meta_window);
-	xcb_destroy_window(dpy, motion_recorder);
 	free(ewmh);
 	xcb_flush(dpy);
 	xcb_disconnect(dpy);
@@ -210,14 +204,12 @@ int main(int argc, char *argv[])
 void init(void)
 {
 	clients_count = 0;
-	monitor_uid = desktop_uid = 0;
 	mon = mon_head = mon_tail = pri_mon = NULL;
 	history_head = history_tail = history_needle = NULL;
 	rule_head = rule_tail = NULL;
 	stack_head = stack_tail = NULL;
 	subscribe_head = subscribe_tail = NULL;
 	pending_rule_head = pending_rule_tail = NULL;
-	last_motion_time = last_motion_x = last_motion_y = 0;
 	auto_raise = sticky_still = record_history = true;
 	randr_base = 0;
 	exit_status = 0;
@@ -227,6 +219,8 @@ void setup(void)
 {
 	init();
 	ewmh_init();
+	pointer_init();
+
 	screen = xcb_setup_roots_iterator(xcb_get_setup(dpy)).data;
 
 	if (screen == NULL) {
@@ -235,6 +229,7 @@ void setup(void)
 
 	root = screen->root;
 	register_events();
+	grab_buttons();
 
 	screen_width = screen->width_in_pixels;
 	screen_height = screen->height_in_pixels;
@@ -242,12 +237,6 @@ void setup(void)
 	meta_window = xcb_generate_id(dpy);
 	xcb_create_window(dpy, XCB_COPY_FROM_PARENT, meta_window, root, -1, -1, 1, 1, 0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, XCB_NONE, NULL);
 	xcb_icccm_set_wm_class(dpy, meta_window, sizeof(META_WINDOW_IC), META_WINDOW_IC);
-
-	motion_recorder = xcb_generate_id(dpy);
-	uint32_t values[] = {XCB_EVENT_MASK_POINTER_MOTION};
-	xcb_create_window(dpy, XCB_COPY_FROM_PARENT, motion_recorder, root, 0, 0, screen_width, screen_height, 0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, XCB_CW_EVENT_MASK, values);
-	xcb_icccm_set_wm_class(dpy, motion_recorder, sizeof(MOTION_RECORDER_IC), MOTION_RECORDER_IC);
-
 
 	xcb_atom_t net_atoms[] = {ewmh->_NET_SUPPORTED,
 	                          ewmh->_NET_SUPPORTING_WM_CHECK,
@@ -257,8 +246,10 @@ void setup(void)
 	                          ewmh->_NET_CLIENT_LIST,
 	                          ewmh->_NET_ACTIVE_WINDOW,
 	                          ewmh->_NET_CLOSE_WINDOW,
+	                          ewmh->_NET_WM_STRUT_PARTIAL,
 	                          ewmh->_NET_WM_DESKTOP,
 	                          ewmh->_NET_WM_STATE,
+	                          ewmh->_NET_WM_STATE_HIDDEN,
 	                          ewmh->_NET_WM_STATE_FULLSCREEN,
 	                          ewmh->_NET_WM_STATE_BELOW,
 	                          ewmh->_NET_WM_STATE_ABOVE,
@@ -277,6 +268,7 @@ void setup(void)
 
 #define GETATOM(a) \
 	get_atom(#a, &a);
+	GETATOM(WM_STATE)
 	GETATOM(WM_DELETE_WINDOW)
 	GETATOM(WM_TAKE_FOCUS)
 #undef GETATOM
@@ -306,24 +298,23 @@ void setup(void)
 			for (int i = 0; i < n; i++) {
 				xcb_xinerama_screen_info_t info = xsi[i];
 				xcb_rectangle_t rect = (xcb_rectangle_t) {info.x_org, info.y_org, info.width, info.height};
-				monitor_t *m = make_monitor(&rect);
+				monitor_t *m = make_monitor(NULL, &rect, XCB_NONE);
 				add_monitor(m);
-				add_desktop(m, make_desktop(NULL));
+				add_desktop(m, make_desktop(NULL, XCB_NONE));
 			}
 			free(xsq);
 		} else {
 			warn("Xinerama is inactive.\n");
 			xcb_rectangle_t rect = (xcb_rectangle_t) {0, 0, screen_width, screen_height};
-			monitor_t *m = make_monitor(&rect);
+			monitor_t *m = make_monitor(NULL, &rect, XCB_NONE);
 			add_monitor(m);
-			add_desktop(m, make_desktop(NULL));
+			add_desktop(m, make_desktop(NULL, XCB_NONE));
 		}
 	}
 
 	ewmh_update_number_of_desktops();
 	ewmh_update_desktop_names();
 	ewmh_update_current_desktop();
-	frozen_pointer = make_pointer_state();
 	xcb_get_input_focus_reply_t *ifo = xcb_get_input_focus_reply(dpy, xcb_get_input_focus(dpy), NULL);
 	if (ifo != NULL && (ifo->focus == XCB_INPUT_FOCUS_POINTER_ROOT || ifo->focus == XCB_NONE)) {
 		clear_input_focus();
@@ -359,7 +350,6 @@ void cleanup(void)
 	}
 
 	empty_history();
-	free(frozen_pointer);
 }
 
 bool check_connection (xcb_connection_t *dpy)

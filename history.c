@@ -30,7 +30,7 @@
 
 history_t *make_history(monitor_t *m, desktop_t *d, node_t *n)
 {
-	history_t *h = malloc(sizeof(history_t));
+	history_t *h = calloc(1, sizeof(history_t));
 	h->loc = (coordinates_t) {m, d, n};
 	h->prev = h->next = NULL;
 	h->latest = true;
@@ -105,8 +105,8 @@ void history_swap_desktops(monitor_t *m1, desktop_t *d1, monitor_t *m2, desktop_
 
 void history_remove(desktop_t *d, node_t *n, bool deep)
 {
-   /* removing from the newest to the oldest is required */
-   /* for maintaining the *latest* attribute */
+	/* removing from the newest to the oldest is required */
+	/* for maintaining the *latest* attribute */
 	history_t *b = history_tail;
 	while (b != NULL) {
 		if ((n != NULL && ((deep && is_descendant(b->loc.node, n)) || (!deep && b->loc.node == n))) ||
@@ -163,7 +163,8 @@ void empty_history(void)
 node_t *history_last_node(desktop_t *d, node_t *n)
 {
 	for (history_t *h = history_tail; h != NULL; h = h->prev) {
-		if (h->latest && h->loc.node != NULL && !is_descendant(h->loc.node, n) && h->loc.desktop == d) {
+		if (h->latest && h->loc.node != NULL && !h->loc.node->hidden &&
+		    !is_descendant(h->loc.node, n) && h->loc.desktop == d) {
 			return h->loc.node;
 		}
 	}
@@ -201,6 +202,7 @@ bool history_find_node(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst
 		if (!h->latest ||
 		    h->loc.node == NULL ||
 		    h->loc.node == ref->node ||
+		    h->loc.node->hidden ||
 		    !node_matches(&h->loc, ref, sel)) {
 			continue;
 		}
@@ -259,17 +261,17 @@ bool history_find_monitor(history_dir_t hdi, coordinates_t *ref, coordinates_t *
 	return false;
 }
 
-int history_rank(desktop_t *d, node_t *n)
+uint32_t history_rank(node_t *n)
 {
-	int i = 0;
+	uint32_t r = 0;
 	history_t *h = history_tail;
-	while (h != NULL && (!h->latest || h->loc.node != n || h->loc.desktop != d)) {
+	while (h != NULL && (!h->latest || h->loc.node != n)) {
 		h = h->prev;
-		i++;
+		r++;
 	}
 	if (h == NULL) {
-		return -1;
+		return UINT32_MAX;
 	} else {
-		return i;
+		return r;
 	}
 }

@@ -1,24 +1,26 @@
-VERSION := $(shell git describe 2> /dev/null || cat VERSION)
+VERCMD  ?= git describe 2> /dev/null
+VERSION := $(shell $(VERCMD) || cat VERSION)
 
 CPPFLAGS += -D_POSIX_C_SOURCE=200112L -DVERSION=\"$(VERSION)\"
 CFLAGS   += -std=c99 -pedantic -Wall -Wextra
-LDLIBS    = -lm -lxcb -lxcb-util -lxcb-icccm -lxcb-ewmh -lxcb-randr -lxcb-xinerama
+LDLIBS    = -lm -lxcb -lxcb-util -lxcb-keysyms -lxcb-icccm -lxcb-ewmh -lxcb-randr -lxcb-xinerama
 
 PREFIX    ?= /usr/local
 BINPREFIX ?= $(PREFIX)/bin
 MANPREFIX ?= $(PREFIX)/share/man
 DOCPREFIX ?= $(PREFIX)/share/doc/bspwm
 BASHCPL   ?= $(PREFIX)/share/bash-completion/completions
+FISHCPL   ?= $(PREFIX)/share/fish/vendor_completions.d
 ZSHCPL    ?= $(PREFIX)/share/zsh/site-functions
 
-MD_DOCS = README.md doc/CHANGELOG.md doc/CONTRIBUTING.md doc/INSTALL.md doc/MISC.md doc/TODO.md
+MD_DOCS    = README.md doc/CHANGELOG.md doc/CONTRIBUTING.md doc/INSTALL.md doc/MISC.md doc/TODO.md
 XSESSIONS ?= $(PREFIX)/share/xsessions
 
-WM_SRC = bspwm.c helpers.c geometry.c jsmn.c settings.c monitor.c desktop.c tree.c stack.c history.c \
+WM_SRC   = bspwm.c helpers.c geometry.c jsmn.c settings.c monitor.c desktop.c tree.c stack.c history.c \
 	 events.c pointer.c window.c messages.c parse.c query.c restore.c rule.c ewmh.c subscribe.c
-WM_OBJ = $(WM_SRC:.c=.o)
-CLI_SRC = bspc.c helpers.c
-CLI_OBJ = $(CLI_SRC:.c=.o)
+WM_OBJ  := $(WM_SRC:.c=.o)
+CLI_SRC  = bspc.c helpers.c
+CLI_OBJ := $(CLI_SRC:.c=.o)
 
 all: bspwm bspc
 
@@ -42,6 +44,8 @@ install:
 	cp -Pp doc/bspc.1 "$(DESTDIR)$(MANPREFIX)"/man1
 	mkdir -p "$(DESTDIR)$(BASHCPL)"
 	cp -p contrib/bash_completion "$(DESTDIR)$(BASHCPL)"/bspc
+	mkdir -p "$(DESTDIR)$(FISHCPL)"
+	cp -p contrib/fish_completion "$(DESTDIR)$(FISHCPL)"/bspc.fish
 	mkdir -p "$(DESTDIR)$(ZSHCPL)"
 	cp -p contrib/zsh_completion "$(DESTDIR)$(ZSHCPL)"/_bspc
 	mkdir -p "$(DESTDIR)$(DOCPREFIX)"
@@ -56,6 +60,7 @@ uninstall:
 	rm -f "$(DESTDIR)$(MANPREFIX)"/man1/bspwm.1
 	rm -f "$(DESTDIR)$(MANPREFIX)"/man1/bspc.1
 	rm -f "$(DESTDIR)$(BASHCPL)"/bspc
+	rm -f "$(DESTDIR)$(FISHCPL)"/bspc.fish
 	rm -f "$(DESTDIR)$(ZSHCPL)"/_bspc
 	rm -rf "$(DESTDIR)$(DOCPREFIX)"
 	rm -f "$(DESTDIR)$(XSESSIONS)"/bspwm.desktop

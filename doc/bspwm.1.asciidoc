@@ -17,6 +17,8 @@ Synopsis
 
 *bspc* 'DOMAIN' ['SELECTOR'] 'COMMANDS'
 
+*bspc* 'COMMAND' ['OPTIONS'] ['ARGUMENTS']
+
 Description
 -----------
 
@@ -51,12 +53,16 @@ Selectors
 Selectors are used to select a target node, desktop, or monitor. A selector
 can either describe the target relatively or name it globally.
 
-Selectors consist of a descriptor and any number of non-conflicting modifiers
-as follows:
+Selectors consist of an optional reference, a descriptor and any number of
+non-conflicting modifiers as follows:
 
-	DESCRIPTOR(.MODIFIER)*
+	[REFERENCE#]DESCRIPTOR(.MODIFIER)*
 
-An exclamation mark can be prepended to certain modifiers in order to reverse their meaning.
+The relative targets are computed in relation to the given reference (the
+default reference value is *focused*).
+
+An exclamation mark can be prepended to any modifier in order to reverse its
+meaning.
 
 Node
 ~~~~
@@ -64,11 +70,11 @@ Node
 Select a node.
 
 ----
-NODE_SEL := (<node_id>|PATH|DIR|CYCLE_DIR|last|older|newer|biggest|focused)[.[!]focused][.[!]automatic][.[!]local][.[!]leaf][.[!]STATE][.[!]FLAG][.[!]LAYER][.[!]same_class]
+NODE_SEL := [NODE_SEL#](DIR|CYCLE_DIR|PATH|last|older|newer|focused|pointed|biggest|<node_id>)[.[!]focused][.[!]automatic][.[!]local][.[!]active][.[!]leaf][.[!]window][.[!]STATE][.[!]FLAG][.[!]LAYER][.[!]same_class][.[!]descendant_of][.[!]ancestor_of]
 
 STATE := tiled|pseudo_tiled|floating|fullscreen
 
-FLAG := urgent|sticky|private|locked
+FLAG := hidden|sticky|private|locked|urgent
 
 LAYER := below|normal|above
 
@@ -80,37 +86,40 @@ JUMP := first|1|second|2|brother|parent|DIR
 Descriptors
 ^^^^^^^^^^^
 
-<node_id>::
-	Selects the node with the given ID.
+'DIR'::
+	Selects the window in the given (spacial) direction relative to the reference node.
+
+'CYCLE_DIR'::
+	Selects the window in the given (cyclic) direction relative to the reference node.
 
 'PATH'::
 	Selects the node at the given path.
 
-'DIR'::
-	Selects the window in the given (spacial) direction relative to the active node.
-
-'CYCLE_DIR'::
-	Selects the window in the given (cyclic) direction.
-
-biggest::
-	Selects the biggest window on the current desktop.
-
 last::
-	Selects the previously focused node.
+	Selects the previously focused node relative to the reference node.
+
+older::
+	Selects the node older than the reference node in the history.
+
+newer::
+	Selects the node newer than the reference node in the history.
 
 focused::
 	Selects the currently focused node.
 
-older::
-	Selects the node older than the focused node in the history.
+pointed::
+	Selects the window under the pointer.
 
-newer::
-	Selects the node newer than the focused node in the history.
+biggest::
+	Selects the biggest window.
+
+<node_id>::
+	Selects the node with the given ID.
 
 Path Jumps
 ^^^^^^^^^^
 
-The initial node is the focused node (or the root if the path starts with '/') of the focused desktop (or the selected desktop if the path has a 'DESKTOP_SEL' prefix).
+The initial node is the focused node (or the root if the path starts with '/') of the reference desktop (or the selected desktop if the path has a 'DESKTOP_SEL' prefix).
 
 1|first::
 	Jumps to the first child.
@@ -137,18 +146,30 @@ Modifiers
 	Only consider nodes in automatic or manual insertion mode.
 
 [!]local::
-	Only consider nodes in or not in the current desktop.
+	Only consider nodes in or not in the reference desktop.
+
+[!]active::
+	Only consider nodes in or not in the active desktop of their monitor.
 
 [!]leaf::
 	Only consider leaves or internal nodes.
+
+[!]window::
+	Only consider nodes that hold or don't hold a window.
 
 [!](tiled|pseudo_tiled|floating|fullscreen)::
 	Only consider windows in or not in the given state.
 
 [!]same_class::
-	Only consider windows that have or don't have the same class as the current window.
+	Only consider windows that have or don't have the same class as the reference window.
 
-[!](private|urgent|sticky|locked)::
+[!]descendant_of::
+	Only consider nodes that are or aren't descendants of the reference node.
+
+[!]ancestor_of::
+	Only consider nodes that are or aren't ancestors of the reference node.
+
+[!](hidden|sticky|private|locked|urgent)::
 	Only consider windows that have or don't have the given flag set.
 
 [!](below|normal|above)::
@@ -160,32 +181,35 @@ Desktop
 Select a desktop.
 
 ----
-DESKTOP_SEL := (<desktop_name>|[MONITOR_SEL:](focused|^<n>)CYCLE_DIR|last|older|newer)[.[!]occupied][.[!]focused][.[!]urgent][.[!]local]
+DESKTOP_SEL := [DESKTOP_SEL#](CYCLE_DIR|last|older|newer|[MONITOR_SEL:](focused|^<n>)|<desktop_id>|<desktop_name>)[.[!]occupied][.[!]focused][.[!]urgent][.[!]local]
 ----
 
 Descriptors
 ^^^^^^^^^^^
 
-<desktop_name>::
-	Selects the desktop with the given name.
-
-^<n>::
-	Selects the nth desktop.
-
 'CYCLE_DIR'::
-	Selects the desktop in the given direction relative to the active desktop.
+	Selects the desktop in the given direction relative to the reference desktop.
 
 last::
-	Selects the previously focused desktop.
+	Selects the previously focused desktop relative to the reference desktop.
+
+older::
+	Selects the desktop older than the reference desktop in the history.
+
+newer::
+	Selects the desktop newer than the reference desktop in the history.
 
 focused::
 	Selects the currently focused desktop.
 
-older::
-	Selects the desktop older than the focused desktop in the history.
+^<n>::
+	Selects the nth desktop.
 
-newer::
-	Selects the desktop newer than the focused desktop in the history.
+<desktop_id>::
+	Selects the desktop with the given ID.
+
+<desktop_name>::
+	Selects the desktop with the given name.
 
 Modifiers
 ^^^^^^^^^
@@ -200,7 +224,7 @@ Modifiers
 	Only consider urgent or non urgent desktops.
 
 [!]local::
-	Only consider inside or outside of the current monitor.
+	Only consider inside or outside of the reference monitor.
 
 Monitor
 ~~~~~~~
@@ -208,38 +232,42 @@ Monitor
 Select a monitor.
 
 ----
-MONITOR_SEL := (<monitor_name>|^<n>|DIR|CYCLE_DIR|last|primary|focused|older|newer)[.[!]occupied][.[!]focused]
+MONITOR_SEL := [MONITOR_SEL#](DIR|CYCLE_DIR|last|older|newer|focused|primary|^<n>|<monitor_id>|<monitor_name>)[.[!]occupied][.[!]focused]
 ----
 
 Descriptors
 ^^^^^^^^^^^
 
-<monitor_name>::
-	Selects the monitor with the given name.
-
-^<n>::
-	Selects the nth monitor.
-
 'DIR'::
-	Selects the monitor in the given (spacial) direction relative to the active monitor.
+	Selects the monitor in the given (spacial) direction relative to the reference monitor.
 
 'CYCLE_DIR'::
-	Selects the monitor in the given (cyclic) direction relative to the active monitor.
-
-primary::
-	Selects the primary monitor.
+	Selects the monitor in the given (cyclic) direction relative to the reference monitor.
 
 last::
-	Selects the previously focused monitor.
+	Selects the previously focused monitor relative to the reference monitor.
+
+older::
+	Selects the monitor older than the reference monitor in the history.
+
+newer::
+	Selects the monitor newer than the reference monitor in the history.
 
 focused::
 	Selects the currently focused monitor.
 
-older::
-	Selects the monitor older than the focused monitor in the history.
+primary::
+	Selects the primary monitor.
 
-newer::
-	Selects the monitor newer than the focused monitor in the history.
+^<n>::
+	Selects the nth monitor.
+
+<monitor_id>::
+	Selects the monitor with the given ID.
+
+<monitor_name>::
+	Selects the monitor with the given name.
+
 
 Modifiers
 ^^^^^^^^^
@@ -270,14 +298,17 @@ fullscreen::
 Node Flags
 ----------
 
-locked::
-	Ignores the *node --close* message.
+hidden::
+	Is hidden and doesn't occupy any tiling space.
 
 sticky::
 	Stays in the focused desktop of its monitor.
 
 private::
 	Tries to keep the same tiling position/size.
+
+locked::
+	Ignores the *node --close* message.
 
 urgent::
 	Has its urgency hint set. This flag is set externally.
@@ -301,6 +332,8 @@ General Syntax
 ^^^^^^^^^^^^^^
 
 node ['NODE_SEL'] 'COMMANDS'
+
+If 'NODE_SEL' is omitted, *focused* is assumed.
 
 Commands
 ^^^^^^^^
@@ -328,6 +361,12 @@ Commands
 *-o*, *--presel-ratio* 'RATIO'::
 	Set the splitting ratio of the preselection area.
 
+*-v*, *--move* 'dx' 'dy'::
+	Move the selected window by 'dx' pixels horizontally and 'dy' pixels vertically.
+
+*-z*, *--resize* top|left|bottom|right|top_left|top_right|bottom_right|bottom_left 'dx' 'dy'::
+	Resize the selected window by moving the given handle by 'dx' pixels horizontally and 'dy' pixels vertically.
+
 *-r*, *--ratio* 'RATIO'|(+|-)'PIXELS'::
 	Set the splitting ratio of the selected node (0 < 'RATIO' < 1).
 
@@ -349,11 +388,14 @@ Commands
 *-t*, *--state* [~](tiled|pseudo_tiled|floating|fullscreen)::
 	Set the state of the selected window. If *~* is present and the current state matches the given state, then the argument is interpreted as the last state.
 
-*-g*, *--flag* locked|sticky|private[=on|off]::
+*-g*, *--flag* hidden|sticky|private|locked[=on|off]::
 	Set or toggle the given flag for the selected node.
 
 *-l*, *--layer* below|normal|above::
 	Set the stacking layer of the selected window.
+
+*-i*, *--insert-receptacle*::
+	Insert a receptacle node at the selected node.
 
 *-c*, *--close*::
 	Close the windows rooted at the selected node.
@@ -368,6 +410,8 @@ General Syntax
 ^^^^^^^^^^^^^^
 
 desktop ['DESKTOP_SEL'] 'COMMANDS'
+
+If 'DESKTOP_SEL' is omitted, *focused* is assumed.
 
 COMMANDS
 ^^^^^^^^
@@ -403,22 +447,24 @@ General Syntax
 
 monitor ['MONITOR_SEL'] 'COMMANDS'
 
+If 'MONITOR_SEL' is omitted, *focused* is assumed.
+
 Commands
 ^^^^^^^^
 *-f*, *--focus* ['MONITOR_SEL']::
 	Focus the selected or given monitor.
 
+*-s*, *--swap* 'MONITOR_SEL'::
+	Swap the selected monitor with the given monitor.
+
 *-a*, *--add-desktops* <name>...::
 	Create desktops with the given names in the selected monitor.
-
-*-r*, *--remove-desktops* <name>...::
-	Remove desktops with the given names.
 
 *-o*, *--reorder-desktops* <name>...::
 	Reorder the desktops of the selected monitor to match the given order.
 
 *-d*, *--reset-desktops* <name>...::
-	Rename, add or remove desktops depending on whether the number of given names is equal, superior or inferior to the number of existing desktops. Incidentally reset the settings of the existing desktops.
+	Rename, add or remove desktops depending on whether the number of given names is equal, superior or inferior to the number of existing desktops.
 
 *-g*, *--rectangle* WxH+X+Y::
 	Set the rectangle of the selected monitor.
@@ -426,8 +472,8 @@ Commands
 *-n*, *--rename* <new_name>::
 	Rename the selected monitor.
 
-*-s*, *--swap* 'MONITOR_SEL'::
-	Swap the selected monitor with the given monitor.
+*-r*, *--remove*::
+	Remove the selected monitor.
 
 Query
 ~~~~~
@@ -440,14 +486,16 @@ query 'COMMANDS' ['OPTIONS']
 Commands
 ^^^^^^^^
 
-*-N*, *--nodes*::
+The optional selectors are references.
+
+*-N*, *--nodes* ['NODE_SEL']::
 	List the IDs of the matching nodes.
 
-*-D*, *--desktops*::
-	List the names of the matching desktops.
+*-D*, *--desktops* ['DESKTOP_SEL']::
+	List the IDs of the matching desktops.
 
-*-M*, *--monitors*::
-	List the names of the matching monitors.
+*-M*, *--monitors* ['MONITOR_SEL']::
+	List the IDs of the matching monitors.
 
 *-T*, *--tree*::
 	Print a JSON representation of the matching item.
@@ -455,7 +503,9 @@ Commands
 Options
 ^^^^^^^
 
-[*-m*,*--monitor* ['MONITOR_SEL']] | [*-d*,*--desktop* ['DESKTOP_SEL']] | [*-n*, *--node* ['NODE_SEL']]::
+*-m*,*--monitor* ['MONITOR_SEL']::
+*-d*,*--desktop* ['DESKTOP_SEL']::
+*-n*, *--node* ['NODE_SEL']::
 	Constrain matches to the selected monitor, desktop or node. The descriptor can be omitted for '-M', '-D' and '-N'.
 
 Wm
@@ -478,9 +528,6 @@ Commands
 *-a*, *--add-monitor* <name> WxH+X+Y::
 	Add a monitor for the given name and rectangle.
 
-*-r*, *--remove-monitor* <name>::
-	Remove the monitor with the given name.
-
 *-o*, *--adopt-orphans*::
 	Manage all the unmanaged windows remaining from a previous session.
 
@@ -489,26 +536,6 @@ Commands
 
 *-g*, *--get-status*::
 	Print the current status information.
-
-Pointer
-~~~~~~~
-
-General Syntax
-^^^^^^^^^^^^^^
-
-pointer 'COMMANDS'
-
-Commands
-^^^^^^^^
-
-*-g*, *--grab* focus|move|resize_side|resize_corner::
-	Initiate the given pointer action.
-
-*-t*, *--track* <x> <y>::
-	Pass the pointer root coordinates for the current pointer action.
-
-*-u*, *--ungrab*::
-	Terminate the current pointer action.
 
 Rule
 ~~~~
@@ -521,7 +548,7 @@ rule 'COMMANDS'
 Commands
 ^^^^^^^^
 
-*-a*, *--add* (<class_name>|\*)[:(<instance_name>|\*)] [*-o*|*--one-shot*] [monitor=MONITOR_SEL|desktop=DESKTOP_SEL|node=NODE_SEL] [state=STATE] [layer=LAYER] [split_dir=DIR] [split_ratio=RATIO] [(locked|sticky|private|center|follow|manage|focus|border)=(on|off)]::
+*-a*, *--add* (<class_name>|\*)[:(<instance_name>|\*)] [*-o*|*--one-shot*] [monitor=MONITOR_SEL|desktop=DESKTOP_SEL|node=NODE_SEL] [state=STATE] [layer=LAYER] [split_dir=DIR] [split_ratio=RATIO] [(hidden|sticky|private|locked|center|follow|manage|focus|border)=(on|off)]::
 	Create a new rule.
 
 *-r*, *--remove* ^<n>|head|tail|(<class_name>|\*)[:(<instance_name>|*)]...::
@@ -559,15 +586,7 @@ quit [<status>]::
 Exit Codes
 ----------
 
-If the server can't handle a message, *bspc* will return with one of the following exit codes:
-
-1::
-	Failure.
-2::
-	Syntax error.
-3::
-	Unknown command.
-
+If the server can't handle a message, *bspc* will return with a non-zero exit code.
 
 Settings
 --------
@@ -597,16 +616,10 @@ Global Settings
 	Prefix prepended to each of the status lines.
 
 'external_rules_command'::
-	External command used to retrieve rule consequences. The command will receive the the ID of the window being processed as its first argument and the class and instance names as second and third arguments. The output of that command must have the following format: *key1=value1 key2=value2 ...* (the valid key/value pairs are given in the description of the 'rule' command).
+	External command used to retrieve rule consequences. The command will receive the following arguments: window ID, class and instance names, monitor, desktop and node selectors. The output of that command must have the following format: *key1=value1 key2=value2 ...* (the valid key/value pairs are given in the description of the 'rule' command).
 
 'initial_polarity'::
 	On which child should a new window be attached when adding a window on a single window tree in automatic mode. Accept the following values: *first_child*, *second_child*.
-
-'history_aware_focus'::
-	Give priority to the focus history when focusing nodes.
-
-'focus_by_distance'::
-	Base focusing on distances between windows.
 
 'borderless_monocle'::
 	Remove borders of tiled windows for the *monocle* desktop layout.
@@ -619,6 +632,20 @@ Global Settings
 
 'single_monocle'::
 	Set the desktop layout to *monocle* if there's only one tiled window in the tree.
+
+'pointer_motion_interval'::
+	The minimum interval, in milliseconds, between two motion notify events.
+
+'pointer_modifier'::
+	Keyboard modifier used for moving or resizing windows. Accept the following values: *shift*, *control*, *lock*, *mod1*, *mod2*, *mod3*, *mod4*, *mod5*.
+
+'pointer_action1'::
+'pointer_action2'::
+'pointer_action3'::
+	Action performed when pressing 'pointer_modifier' + 'button<n>'. Accept the following values: *move*, *resize_side*, *resize_corner*, *focus*, *none*.
+
+'click_to_focus'::
+	Focus a window (or a monitor) by clicking it.
 
 'focus_follows_pointer'::
 	Focus the window under the pointer.
@@ -634,6 +661,9 @@ Global Settings
 
 'center_pseudo_tiled'::
 	Center pseudo tiled windows into their tiling rectangles. Defaults to 'true'.
+
+'honor_size_hints'::
+	Apply ICCCM window size hints.
 
 'remove_disabled_monitors'::
 	Consider disabled monitors as disconnected.
@@ -653,18 +683,34 @@ Monitor and Desktop Settings
 'left_padding'::
 	Padding space added at the sides of the monitor or desktop.
 
-Default, Desktop Default and Window Settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-'border_width'::
-	Window border width.
-
-Default and Desktop Settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Desktop Settings
+~~~~~~~~~~~~~~~~
 
 'window_gap'::
 	Size of the gap that separates windows.
 
+Node Settings
+~~~~~~~~~~~~~
+
+'border_width'::
+	Window border width.
+
+Pointer Bindings
+----------------
+
+'button1'::
+	Focus the window under the pointer if 'click_to_focus' is set.
+
+'pointer_modifier' + 'button1'::
+	Move the window under the pointer.
+
+'pointer_modifier' + 'button2'::
+	Resize the window under the pointer by dragging the nearest side.
+
+'pointer_modifier' + 'button3'::
+	Resize the window under the pointer by dragging the nearest corner.
+
+The behavior of 'pointer_modifier' + 'button<n>' can be modified through the 'pointer_action<n>' setting.
 
 Events
 ------
@@ -672,83 +718,86 @@ Events
 'report'::
 	See the next section for the description of the format.
 
-'monitor_add <monitor_name> <monitor_id> <monitor_geometry>'::
+'monitor_add <monitor_id> <monitor_name> <monitor_geometry>'::
 	A monitor is added.
 
-'monitor_rename <old_name> <new_name>'::
+'monitor_rename <monitor_id> <old_name> <new_name>'::
 	A monitor is renamed.
 
-'monitor_remove <monitor_name>'::
+'monitor_remove <monitor_id>'::
 	A monitor is removed.
 
-'monitor_swap <src_monitor_name> <dst_monitor_name>'::
+'monitor_swap <src_monitor_id> <dst_monitor_id>'::
 	A monitor is swapped.
 
-'monitor_focus <monitor_name>'::
+'monitor_focus <monitor_id>'::
 	A monitor is focused.
 
-'monitor_geometry <monitor_name> <monitor_geometry>'::
+'monitor_geometry <monitor_id> <monitor_geometry>'::
 	The geometry of a monitor changed.
 
-'desktop_add <monitor_name> <desktop_name>'::
+'desktop_add <monitor_id> <desktop_id> <desktop_name>'::
 	A desktop is added.
 
-'desktop_rename <monitor_name> <old_name> <new_name>'::
+'desktop_rename <monitor_id> <desktop_id> <old_name> <new_name>'::
 	A desktop is renamed.
 
-'desktop_remove <monitor_name> <desktop_name>'::
+'desktop_remove <monitor_id> <desktop_id>'::
 	A desktop is removed.
 
-'desktop_swap <src_monitor_name> <src_desktop_name> <dst_monitor_name> <dst_desktop_name>'::
+'desktop_swap <src_monitor_id> <src_desktop_id> <dst_monitor_id> <dst_desktop_id>'::
 	A desktop is swapped.
 
-'desktop_transfer <src_monitor_name> <src_desktop_name> <dst_monitor_name>'::
+'desktop_transfer <src_monitor_id> <src_desktop_id> <dst_monitor_id>'::
 	A desktop is transferred.
 
-'desktop_focus <monitor_name> <desktop_name>'::
+'desktop_focus <monitor_id> <desktop_id>'::
 	A desktop is focused.
 
-'desktop_activate <monitor_name> <desktop_name>'::
+'desktop_activate <monitor_id> <desktop_id>'::
 	A desktop is activated.
 
-'desktop_layout <monitor_name> <desktop_name> tiled|monocle'::
+'desktop_layout <monitor_id> <desktop_id> tiled|monocle'::
 	The layout of a desktop changed.
 
-'node_manage <monitor_name> <desktop_name> <node_id> <ip_id>'::
+'node_manage <monitor_id> <desktop_id> <node_id> <ip_id>'::
 	A window is managed.
 
-'node_unmanage <monitor_name> <desktop_name> <node_id>'::
+'node_unmanage <monitor_id> <desktop_id> <node_id>'::
 	A window is unmanaged.
 
-'node_swap <src_monitor_name> <src_desktop_name> <src_node_id> <dst_monitor_name> <dst_desktop_name> <dst_node_id>'::
+'node_swap <src_monitor_id> <src_desktop_id> <src_node_id> <dst_monitor_id> <dst_desktop_id> <dst_node_id>'::
 	A node is swapped.
 
-'node_transfer <src_monitor_name> <src_desktop_name> <src_node_id> <dst_monitor_name> <dst_desktop_name> <dst_node_id>'::
+'node_transfer <src_monitor_id> <src_desktop_id> <src_node_id> <dst_monitor_id> <dst_desktop_id> <dst_node_id>'::
 	A node is transferred.
 
-'node_focus <monitor_name> <desktop_name> <node_id>'::
+'node_focus <monitor_id> <desktop_id> <node_id>'::
 	A node is focused.
 
-'node_activate <monitor_name> <desktop_name> <node_id>'::
+'node_activate <monitor_id> <desktop_id> <node_id>'::
 	A node is activated.
 
-'node_presel <monitor_name> <desktop_name> <node_id> (dir DIR|ratio RATIO|cancel)'::
+'node_presel <monitor_id> <desktop_id> <node_id> (dir DIR|ratio RATIO|cancel)'::
 	A node is preselected.
 
 'node_stack <node_id_1> below|above <node_id_2>'::
 	A node is stacked below or above another node.
 
-'node_geometry <monitor_name> <desktop_name> <node_id> <node_geometry>'::
+'node_geometry <monitor_id> <desktop_id> <node_id> <node_geometry>'::
 	The geometry of a window changed.
 
-'node_state <monitor_name> <desktop_name> <node_id> tiled|pseudo_tiled|floating|fullscreen on|off'::
+'node_state <monitor_id> <desktop_id> <node_id> tiled|pseudo_tiled|floating|fullscreen on|off'::
 	The state of a window changed.
 
-'node_flag <monitor_name> <desktop_name> <node_id> sticky|private|locked|urgent on|off'::
+'node_flag <monitor_id> <desktop_id> <node_id> hidden|sticky|private|locked|urgent on|off'::
 	One of the flags of a node changed.
 
-'node_layer <monitor_name> <desktop_name> <node_id> below|normal|above'::
+'node_layer <monitor_id> <desktop_id> <node_id> below|normal|above'::
 	The layer of a window changed.
+
+'pointer_action <monitor_id> <desktop_id> <node_id> move|resize_corner|resize_side begin|end'::
+	A pointer action occured.
 
 Please note that *bspwm* initializes monitors before it reads messages on its socket, therefore the initial monitor events can't be received.
 

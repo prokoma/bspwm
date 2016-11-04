@@ -33,7 +33,7 @@
 
 void ewmh_init(void)
 {
-	ewmh = malloc(sizeof(xcb_ewmh_connection_t));
+	ewmh = calloc(1, sizeof(xcb_ewmh_connection_t));
 	if (xcb_ewmh_init_atoms_replies(ewmh, xcb_ewmh_init_atoms(dpy, ewmh), NULL) == 0) {
 		err("Can't initialize EWMH atoms.\n");
 	}
@@ -99,6 +99,9 @@ void ewmh_set_wm_desktop(node_t *n, desktop_t *d)
 {
 	uint32_t i = ewmh_get_desktop_index(d);
 	for (node_t *f = first_extrema(n); f != NULL; f = next_leaf(f, n)) {
+		if (f->client == NULL) {
+			continue;
+		}
 		xcb_ewmh_set_wm_desktop(ewmh, f->id, i);
 	}
 }
@@ -109,6 +112,9 @@ void ewmh_update_wm_desktops(void)
 		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
 			uint32_t i = ewmh_get_desktop_index(d);
 			for (node_t *n = first_extrema(d->root); n != NULL; n = next_leaf(n, d->root)) {
+				if (n->client == NULL) {
+					continue;
+				}
 				xcb_ewmh_set_wm_desktop(ewmh, n->id, i);
 			}
 		}
@@ -143,6 +149,34 @@ void ewmh_update_desktop_names(void)
 	xcb_ewmh_set_desktop_names(ewmh, default_screen, names_len, names);
 }
 
+bool ewmh_handle_struts(xcb_window_t win)
+{
+	xcb_ewmh_wm_strut_partial_t struts;
+	bool changed = false;
+	if (xcb_ewmh_get_wm_strut_partial_reply(ewmh, xcb_ewmh_get_wm_strut_partial(ewmh, win), &struts, NULL) == 1) {
+		for (monitor_t *m = mon_head; m != NULL; m = m->next) {
+			xcb_rectangle_t rect = m->rectangle;
+			if (rect.x < (int16_t) struts.left && (int16_t) struts.left_end_y >= rect.y && (int16_t) struts.left_start_y <= (rect.y + rect.height)) {
+				m->padding.left = struts.left - rect.x;
+				changed = true;
+			}
+			if ((rect.x + rect.width) > (int16_t) (screen_width - struts.right) && (int16_t) struts.right_end_y >= rect.y && (int16_t) struts.right_start_y <= (rect.y + rect.height)) {
+				m->padding.right = (rect.x + rect.width) - screen_width + struts.right;
+				changed = true;
+			}
+			if (rect.y < (int16_t) struts.top && (int16_t) struts.top_end_x >= rect.x && (int16_t) struts.top_start_x <= (rect.x + rect.width)) {
+				m->padding.top = struts.top - rect.y;
+				changed = true;
+			}
+			if ((rect.y + rect.height) > (int16_t) (screen_height - struts.bottom) && (int16_t) struts.bottom_end_x >= rect.x && (int16_t) struts.bottom_start_x <= (rect.x + rect.width)) {
+				m->padding.bottom = (rect.y + rect.height) - screen_height + struts.bottom;
+				changed = true;
+			}
+		}
+	}
+	return changed;
+}
+
 void ewmh_update_client_list(bool stacking)
 {
 	if (clients_count == 0) {
@@ -163,6 +197,9 @@ void ewmh_update_client_list(bool stacking)
 		for (monitor_t *m = mon_head; m != NULL; m = m->next) {
 			for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
 				for (node_t *n = first_extrema(d->root); n != NULL; n = next_leaf(n, d->root)) {
+					if (n->client == NULL) {
+						continue;
+					}
 					wins[i++] = n->id;
 				}
 			}
@@ -171,43 +208,29 @@ void ewmh_update_client_list(bool stacking)
 	}
 }
 
-bool ewmh_wm_state_add(node_t *n, xcb_atom_t state)
+void ewmh_wm_state_update(node_t *n)
 {
 	client_t *c = n->client;
-
-	if (c == NULL || c->wm_states_count >= MAX_WM_STATES) {
-		return false;
+	size_t count = 0;
+	uint32_t values[12];
+#define HANDLE_WM_STATE(s)  \
+	if (WM_FLAG_##s & c->wm_flags) { \
+		values[count++] = ewmh->_NET_WM_STATE_##s; \
 	}
-
-	for (int i = 0; i < c->wm_states_count; i++) {
-		if (c->wm_state[i] == state) {
-			return false;
-		}
-	}
-
-	c->wm_state[c->wm_states_count] = state;
-	c->wm_states_count++;
-	xcb_ewmh_set_wm_state(ewmh, n->id, c->wm_states_count, c->wm_state);
-	return true;
-}
-
-bool ewmh_wm_state_remove(node_t *n, xcb_atom_t state)
-{
-	client_t *c = n->client;
-	if (c == NULL) {
-		return false;
-	}
-	for (int i = 0; i < c->wm_states_count; i++) {
-		if (c->wm_state[i] == state) {
-			for (int j = i; j < (c->wm_states_count - 1); j++) {
-				c->wm_state[j] = c->wm_state[j + 1];
-			}
-			c->wm_states_count--;
-			xcb_ewmh_set_wm_state(ewmh, n->id, c->wm_states_count, c->wm_state);
-			return true;
-		}
-	}
-	return false;
+	HANDLE_WM_STATE(MODAL)
+	HANDLE_WM_STATE(STICKY)
+	HANDLE_WM_STATE(MAXIMIZED_VERT)
+	HANDLE_WM_STATE(MAXIMIZED_HORZ)
+	HANDLE_WM_STATE(SHADED)
+	HANDLE_WM_STATE(SKIP_TASKBAR)
+	HANDLE_WM_STATE(SKIP_PAGER)
+	HANDLE_WM_STATE(HIDDEN)
+	HANDLE_WM_STATE(FULLSCREEN)
+	HANDLE_WM_STATE(ABOVE)
+	HANDLE_WM_STATE(BELOW)
+	HANDLE_WM_STATE(DEMANDS_ATTENTION)
+#undef HANDLE_WM_STATE
+	xcb_ewmh_set_wm_state(ewmh, n->id, count, values);
 }
 
 void ewmh_set_supporting(xcb_window_t win)

@@ -50,10 +50,17 @@ void load_settings(void)
 	snprintf(focused_border_color, sizeof(focused_border_color), "%s", FOCUSED_BORDER_COLOR);
 	snprintf(presel_feedback_color, sizeof(presel_feedback_color), "%s", PRESEL_FEEDBACK_COLOR);
 
+	padding = (padding_t) PADDING;
 	window_gap = WINDOW_GAP;
 	border_width = BORDER_WIDTH;
 	split_ratio = SPLIT_RATIO;
 	initial_polarity = FIRST_CHILD;
+	pointer_modifier = POINTER_MODIFIER;
+	pointer_motion_interval = POINTER_MOTION_INTERVAL;
+
+	pointer_actions[0] = ACTION_MOVE;
+	pointer_actions[1] = ACTION_RESIZE_SIDE;
+	pointer_actions[2] = ACTION_RESIZE_CORNER;
 
 	borderless_monocle = BORDERLESS_MONOCLE;
 	gapless_monocle = GAPLESS_MONOCLE;
@@ -62,9 +69,10 @@ void load_settings(void)
 	focus_follows_pointer = FOCUS_FOLLOWS_POINTER;
 	pointer_follows_focus = POINTER_FOLLOWS_FOCUS;
 	pointer_follows_monitor = POINTER_FOLLOWS_MONITOR;
-	history_aware_focus = HISTORY_AWARE_FOCUS;
 	ignore_ewmh_focus = IGNORE_EWMH_FOCUS;
 	center_pseudo_tiled = CENTER_PSEUDO_TILED;
+	click_to_focus = CLICK_TO_FOCUS;
+	honor_size_hints = HONOR_SIZE_HINTS;
 	remove_disabled_monitors = REMOVE_DISABLED_MONITORS;
 	remove_unplugged_monitors = REMOVE_UNPLUGGED_MONITORS;
 	merge_overlapping_monitors = MERGE_OVERLAPPING_MONITORS;

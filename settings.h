@@ -27,23 +27,24 @@
 
 #include "types.h"
 
-#define WM_NAME                 "bspwm"
-#define CONFIG_NAME             WM_NAME "rc"
-#define CONFIG_HOME_ENV         "XDG_CONFIG_HOME"
-#define EXTERNAL_RULES_COMMAND  ""
-#define STATUS_PREFIX           "W"
+#define WM_NAME                  "bspwm"
+#define CONFIG_NAME              WM_NAME "rc"
+#define CONFIG_HOME_ENV          "XDG_CONFIG_HOME"
+#define POINTER_MODIFIER         XCB_MOD_MASK_4
+#define POINTER_MOTION_INTERVAL  17
+#define EXTERNAL_RULES_COMMAND   ""
+#define STATUS_PREFIX            "W"
 
 #define NORMAL_BORDER_COLOR           "#30302f"
 #define ACTIVE_BORDER_COLOR           "#474645"
 #define FOCUSED_BORDER_COLOR          "#817f7f"
 #define PRESEL_FEEDBACK_COLOR         "#f4d775"
 
+#define PADDING              {0, 0, 0, 0}
 #define WINDOW_GAP           6
 #define BORDER_WIDTH         1
 #define SPLIT_RATIO          0.5
 
-#define HISTORY_AWARE_FOCUS         false
-#define FOCUS_BY_DISTANCE           false
 #define BORDERLESS_MONOCLE          false
 #define GAPLESS_MONOCLE             false
 #define PADDINGLESS_MONOCLE         false
@@ -53,6 +54,8 @@
 #define POINTER_FOLLOWS_MONITOR     false
 #define IGNORE_EWMH_FOCUS           false
 #define CENTER_PSEUDO_TILED         true
+#define CLICK_TO_FOCUS              false
+#define HONOR_SIZE_HINTS            false
 #define REMOVE_DISABLED_MONITORS    false
 #define REMOVE_UNPLUGGED_MONITORS   false
 #define MERGE_OVERLAPPING_MONITORS  false
@@ -65,11 +68,15 @@ char active_border_color[MAXLEN];
 char focused_border_color[MAXLEN];
 char presel_feedback_color[MAXLEN];
 
+padding_t padding;
 int window_gap;
 unsigned int border_width;
 double split_ratio;
 
 child_polarity_t initial_polarity;
+uint16_t pointer_modifier;
+uint32_t pointer_motion_interval;
+pointer_action_t pointer_actions[3];
 
 bool borderless_monocle;
 bool gapless_monocle;
@@ -78,10 +85,10 @@ bool single_monocle;
 bool focus_follows_pointer;
 bool pointer_follows_focus;
 bool pointer_follows_monitor;
-bool history_aware_focus;
-bool focus_by_distance;
 bool ignore_ewmh_focus;
 bool center_pseudo_tiled;
+bool click_to_focus;
+bool honor_size_hints;
 bool remove_disabled_monitors;
 bool remove_unplugged_monitors;
 bool merge_overlapping_monitors;

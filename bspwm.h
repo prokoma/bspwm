@@ -34,13 +34,10 @@
 #define ROOT_WINDOW_IC      "root\0" BSPWM_CLASS_NAME
 #define PRESEL_FEEDBACK_I   "presel_feedback"
 #define PRESEL_FEEDBACK_IC  PRESEL_FEEDBACK_I "\0" BSPWM_CLASS_NAME
-#define MOTION_RECORDER_IC  "motion_recorder\0" BSPWM_CLASS_NAME
 
 xcb_connection_t *dpy;
 int default_screen, screen_width, screen_height;
 uint32_t clients_count;
-unsigned int monitor_uid;
-unsigned int desktop_uid;
 xcb_screen_t *screen;
 xcb_window_t root;
 char config_path[MAXLEN];
@@ -61,9 +58,8 @@ subscriber_list_t *subscribe_tail;
 pending_rule_t *pending_rule_head;
 pending_rule_t *pending_rule_tail;
 
-pointer_state_t *frozen_pointer;
 xcb_window_t meta_window;
-xcb_window_t motion_recorder;
+xcb_atom_t WM_STATE;
 xcb_atom_t WM_TAKE_FOCUS;
 xcb_atom_t WM_DELETE_WINDOW;
 int exit_status;

@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <float.h>
 
 #define LENGTH(x)         (sizeof(x) / sizeof(*x))
 #define MAX(A, B)         ((A) > (B) ? (A) : (B))
@@ -38,11 +39,14 @@
 #define IS_TILED(c)       (c->state == STATE_TILED || c->state == STATE_PSEUDO_TILED)
 #define IS_FLOATING(c)    (c->state == STATE_FLOATING)
 #define IS_FULLSCREEN(c)  (c->state == STATE_FULLSCREEN)
+#define IS_RECEPTACLE(n)  (is_leaf(n) && n->client == NULL)
+#define IS_MONOCLE(d)     (d->layout == LAYOUT_MONOCLE || (single_monocle && tiled_count(d->root) <= 1))
 
 #define BOOL_STR(A)       ((A) ? "true" : "false")
 #define ON_OFF_STR(A)     ((A) ? "on" : "off")
 #define LAYOUT_STR(A)     ((A) == LAYOUT_TILED ? "tiled" : "monocle")
 #define LAYOUT_CHR(A)     ((A) == LAYOUT_TILED ? 'T' : 'M')
+#define CHILD_POL_STR(A)  ((A) == FIRST_CHILD ? "first_child" : "second_child")
 #define SPLIT_TYPE_STR(A) ((A) == TYPE_HORIZONTAL ? "horizontal" : "vertical")
 #define SPLIT_MODE_STR(A) ((A) == MODE_AUTOMATIC ? "automatic" : "manual")
 #define SPLIT_DIR_STR(A)  ((A) == DIR_NORTH ? "north" : ((A) == DIR_WEST ? "west" : ((A) == DIR_SOUTH ? "south" : "east")))
@@ -58,11 +62,22 @@
 #define SMALEN     32
 #define INIT_CAP    8
 
+#define cleaned_mask(m)   (m & ~(num_lock | scroll_lock | caps_lock))
 #define streq(s1, s2)     (strcmp((s1), (s2)) == 0)
+#define unsigned_subtract(a, b)  \
+	do {                         \
+		if (b > a) {             \
+			a = 0;               \
+		} else {                 \
+			a -= b;              \
+		}                        \
+	} while (false)
+
 
 void warn(char *fmt, ...);
 void err(char *fmt, ...);
 char *read_string(const char *file_path, size_t *tlen);
+char *copy_string(char *str, size_t len);
 uint32_t get_color_pixel(const char *color);
 bool is_hex_color(const char *color);
 
