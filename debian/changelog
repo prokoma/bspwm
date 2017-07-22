@@ -1,6 +1,8 @@
 bspwm (0.9.3-1) unstable; urgency=medium
 
   * New upstream release.
+  * Update debian/control.
+    - Update Standards-Version to 4.0.0.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Sat, 22 Jul 2017 12:45:00 +0900
 
