@@ -27,6 +27,8 @@ all: bspwm bspc
 debug: CFLAGS += -O0 -g
 debug: bspwm bspc
 
+VPATH=src
+
 include Sourcedeps
 
 $(WM_OBJ) $(CLI_OBJ): Makefile
@@ -50,7 +52,8 @@ install:
 	cp -p contrib/zsh_completion "$(DESTDIR)$(ZSHCPL)"/_bspc
 	mkdir -p "$(DESTDIR)$(DOCPREFIX)"
 	cp -p $(MD_DOCS) "$(DESTDIR)$(DOCPREFIX)"
-	cp -pr examples "$(DESTDIR)$(DOCPREFIX)"/examples
+	mkdir -p "$(DESTDIR)$(DOCPREFIX)"/examples
+	cp -pr examples/* "$(DESTDIR)$(DOCPREFIX)"/examples
 	mkdir -p "$(DESTDIR)$(XSESSIONS)"
 	cp -p contrib/freedesktop/bspwm.desktop "$(DESTDIR)$(XSESSIONS)"
 

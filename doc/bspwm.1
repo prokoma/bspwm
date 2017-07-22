@@ -2,12 +2,12 @@
 .\"     Title: bspwm
 .\"    Author: [see the "Author" section]
 .\" Generator: DocBook XSL Stylesheets v1.79.1 <http://docbook.sf.net/>
-.\"      Date: 10/30/2016
+.\"      Date: 07/14/2017
 .\"    Manual: Bspwm Manual
-.\"    Source: Bspwm 0.9.2
+.\"    Source: Bspwm 0.9.3
 .\"  Language: English
 .\"
-.TH "BSPWM" "1" "10/30/2016" "Bspwm 0\&.9\&.2" "Bspwm Manual"
+.TH "BSPWM" "1" "07/14/2017" "Bspwm 0\&.9\&.3" "Bspwm Manual"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -222,7 +222,13 @@ Only consider focused or unfocused nodes\&.
 .PP
 [!]automatic
 .RS 4
-Only consider nodes in automatic or manual insertion mode\&.
+Only consider nodes in automatic or manual insertion mode\&. See also
+\fB\-\-presel\-dir\fR
+under
+\fBNode\fR
+in the
+\fBDOMAINS\fR
+section below\&.
 .RE
 .PP
 [!]local
@@ -363,7 +369,7 @@ Only consider urgent or non urgent desktops\&.
 .PP
 [!]local
 .RS 4
-Only consider inside or outside of the reference monitor\&.
+Only consider desktops inside or outside of the reference monitor\&.
 .RE
 .RE
 .SS "Monitor"
@@ -573,7 +579,7 @@ is prepended to
 \fIDIR\fR
 and the current preselection direction matches
 \fIDIR\fR, then the argument is interpreted as
-\fBcancel\fR\&.
+\fBcancel\fR\&. A node with a preselected area is said to be in "manual insertion mode"\&.
 .RE
 .PP
 \fB\-o\fR, \fB\-\-presel\-ratio\fR \fIRATIO\fR
@@ -599,7 +605,7 @@ pixels horizontally and
 pixels vertically\&.
 .RE
 .PP
-\fB\-r\fR, \fB\-\-ratio\fR \fIRATIO\fR|(+|\-)\fIPIXELS\fR
+\fB\-r\fR, \fB\-\-ratio\fR \fIRATIO\fR|(+|\-)(\fIPIXELS\fR|\fIFRACTION\fR)
 .RS 4
 Set the splitting ratio of the selected node (0 <
 \fIRATIO\fR
@@ -819,12 +825,12 @@ List the IDs of the matching nodes\&.
 .PP
 \fB\-D\fR, \fB\-\-desktops\fR [\fIDESKTOP_SEL\fR]
 .RS 4
-List the IDs of the matching desktops\&.
+List the IDs (or names) of the matching desktops\&.
 .RE
 .PP
 \fB\-M\fR, \fB\-\-monitors\fR [\fIMONITOR_SEL\fR]
 .RS 4
-List the IDs of the matching monitors\&.
+List the IDs (or names) of the matching monitors\&.
 .RE
 .PP
 \fB\-T\fR, \fB\-\-tree\fR
@@ -848,6 +854,11 @@ Constrain matches to the selected monitor, desktop or node\&. The descriptor can
 \fI\-D\fR
 and
 \fI\-N\fR\&.
+.RE
+.PP
+\fB\-\-names\fR
+.RS 4
+Print names instead of IDs\&.
 .RE
 .RE
 .SS "Wm"
@@ -922,7 +933,7 @@ rule \fICOMMANDS\fR
 \fBCommands\fR
 .RS 4
 .PP
-\fB\-a\fR, \fB\-\-add\fR (<class_name>|*)[:(<instance_name>|*)] [\fB\-o\fR|\fB\-\-one\-shot\fR] [monitor=MONITOR_SEL|desktop=DESKTOP_SEL|node=NODE_SEL] [state=STATE] [layer=LAYER] [split_dir=DIR] [split_ratio=RATIO] [(hidden|sticky|private|locked|center|follow|manage|focus|border)=(on|off)]
+\fB\-a\fR, \fB\-\-add\fR (<class_name>|*)[:(<instance_name>|*)] [\fB\-o\fR|\fB\-\-one\-shot\fR] [monitor=MONITOR_SEL|desktop=DESKTOP_SEL|node=NODE_SEL] [state=STATE] [layer=LAYER] [split_dir=DIR] [split_ratio=RATIO] [(hidden|sticky|private|locked|center|follow|manage|focus|border)=(on|off)] [rectangle=WxH+X+Y]
 .RS 4
 Create a new rule\&.
 .RE
@@ -947,9 +958,9 @@ List the rules\&.
 \fBGeneral Syntax\fR
 .RS 4
 .PP
-config [\-m \fIMONITOR_SEL\fR|\-d \fIDESKTOP_SEL\fR|\-n \fINODE_SEL\fR] <key> [<value>]
+config [\-m \fIMONITOR_SEL\fR|\-d \fIDESKTOP_SEL\fR|\-n \fINODE_SEL\fR] <setting> [<value>]
 .RS 4
-Get or set the value of <key>\&.
+Get or set the value of <setting>\&.
 .RE
 .RE
 .SS "Subscribe"
@@ -1042,6 +1053,15 @@ On which child should a new window be attached when adding a window on a single 
 \fBsecond_child\fR\&.
 .RE
 .PP
+\fIdirectional_focus_tightness\fR
+.RS 4
+The tightness of the algorithm used to decide whether a window is on the
+\fIDIR\fR
+side of another window\&. Accept the following values:
+\fBhigh\fR,
+\fBlow\fR\&.
+.RE
+.PP
 \fIborderless_monocle\fR
 .RS 4
 Remove borders of tiled windows for the
@@ -1103,7 +1123,20 @@ Action performed when pressing
 .PP
 \fIclick_to_focus\fR
 .RS 4
-Focus a window (or a monitor) by clicking it\&.
+Button used for focusing a window (or a monitor)\&. The possible values are:
+\fBbutton1\fR,
+\fBbutton2\fR,
+\fBbutton3\fR,
+\fBany\fR,
+\fBnone\fR\&.
+.RE
+.PP
+\fIswallow_first_click\fR
+.RS 4
+Don\(cqt replay the click that makes a window focused if
+\fIclick_to_focus\fR
+isn\(cqt
+\fBnone\fR\&.
 .RE
 .PP
 \fIfocus_follows_pointer\fR
@@ -1171,11 +1204,10 @@ Window border width\&.
 .RE
 .SH "POINTER BINDINGS"
 .PP
-\fIbutton1\fR
-.RS 4
-Focus the window under the pointer if
 \fIclick_to_focus\fR
-is set\&.
+.RS 4
+Focus the window (or the monitor) under the pointer if the value isn\(cqt
+\fBnone\fR\&.
 .RE
 .PP
 \fIpointer_modifier\fR + \fIbutton1\fR
