@@ -19,7 +19,7 @@ Depends: ${shlibs:Depends},
  x11-utils,
  sxhkd
 Recommends: lemonbar, xdo
-Provides: x-window-manager,
+Provides: x-window-manager
 Description: Binary space partitioning window manager
  Bspwm is a tiling window manager that represents windows as the
  leaves of a full binary tree.
