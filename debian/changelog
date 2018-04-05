@@ -4,8 +4,9 @@ bspwm (0.9.4-1) unstable; urgency=medium
   * Bump Standards-Version to 4.1.3.
   * Update debhelper to 11.
   * Change Priority to optional.
+  * Update Vcs-Git and Vcs-Browser to salsa.
 
- -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Thu, 05 Apr 2018 15:46:54 +0900
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Thu, 05 Apr 2018 16:04:29 +0900
 
 bspwm (0.9.3-1) unstable; urgency=medium
 
