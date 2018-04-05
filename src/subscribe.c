@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include "bspwm.h"
@@ -31,12 +32,14 @@
 #include "settings.h"
 #include "subscribe.h"
 
-subscriber_list_t *make_subscriber_list(FILE *stream, int field)
+subscriber_list_t *make_subscriber_list(FILE *stream, char *fifo_path, int field, int count)
 {
 	subscriber_list_t *sb = calloc(1, sizeof(subscriber_list_t));
 	sb->prev = sb->next = NULL;
 	sb->stream = stream;
+	sb->fifo_path = fifo_path;
 	sb->field = field;
+	sb->count = count;
 	return sb;
 }
 
@@ -60,12 +63,14 @@ void remove_subscriber(subscriber_list_t *sb)
 		subscribe_tail = a;
 	}
 	fclose(sb->stream);
+	unlink(sb->fifo_path);
+	free(sb->fifo_path);
 	free(sb);
 }
 
-void add_subscriber(FILE *stream, int field)
+void add_subscriber(FILE *stream, char* fifo_path, int field, int count)
 {
-	subscriber_list_t *sb = make_subscriber_list(stream, field);
+	subscriber_list_t *sb = make_subscriber_list(stream, fifo_path, field, count);
 	if (subscribe_head == NULL) {
 		subscribe_head = subscribe_tail = sb;
 	} else {
@@ -75,6 +80,9 @@ void add_subscriber(FILE *stream, int field)
 	}
 	if (sb->field & SBSC_MASK_REPORT) {
 		print_report(sb->stream);
+		if (sb->count-- == 1) {
+			remove_subscriber(sb);
+		}
 	}
 }
 
@@ -100,7 +108,7 @@ int print_report(FILE *stream)
 					fprintf(stream, ":T@");
 				}
 				int i = 0;
-				char flags[4];
+				char flags[5];
 				if (n->sticky) {
 					flags[i++] = 'S';
 				}
@@ -109,6 +117,9 @@ int print_report(FILE *stream)
 				}
 				if (n->locked) {
 					flags[i++] = 'L';
+				}
+				if (n->marked) {
+					flags[i++] = 'M';
 				}
 				flags[i] = '\0';
 				fprintf(stream, ":G%s", flags);
@@ -129,6 +140,9 @@ void put_status(subscriber_mask_t mask, ...)
 	while (sb != NULL) {
 		subscriber_list_t *next = sb->next;
 		if (sb->field & mask) {
+			if (sb->count > 0) {
+				sb->count--;
+			}
 			if (mask == SBSC_MASK_REPORT) {
 				ret = print_report(sb->stream);
 			} else {
@@ -140,7 +154,7 @@ void put_status(subscriber_mask_t mask, ...)
 				va_end(args);
 				ret = fflush(sb->stream);
 			}
-			if (ret != 0) {
+			if (ret != 0 || sb->count == 0) {
 				remove_subscriber(sb);
 			}
 		}

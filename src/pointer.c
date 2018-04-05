@@ -51,7 +51,7 @@ void pointer_init(void)
 void window_grab_buttons(xcb_window_t win)
 {
 	for (unsigned int i = 0; i < LENGTH(BUTTONS); i++) {
-		if (click_to_focus == XCB_BUTTON_INDEX_ANY || click_to_focus == BUTTONS[i]) {
+		if (click_to_focus == (int8_t) XCB_BUTTON_INDEX_ANY || click_to_focus == (int8_t) BUTTONS[i]) {
 			window_grab_button(win, BUTTONS[i], XCB_NONE);
 		}
 		if (pointer_actions[i] != ACTION_NONE) {
@@ -282,7 +282,7 @@ void track_pointer(coordinates_t loc, pointer_action_t pac, xcb_point_t pos)
 			if (pac == ACTION_MOVE) {
 				move_client(&loc, dx, dy);
 			} else {
-				resize_client(&loc, rh, dx, dy);
+				resize_client(&loc, rh, e->root_x, e->root_y, false);
 			}
 			last_motion_x = e->root_x;
 			last_motion_y = e->root_y;

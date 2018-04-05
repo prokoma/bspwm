@@ -27,9 +27,6 @@
 
 #include "types.h"
 
-#define WM_NAME                  "bspwm"
-#define CONFIG_NAME              WM_NAME "rc"
-#define CONFIG_HOME_ENV          "XDG_CONFIG_HOME"
 #define POINTER_MODIFIER         XCB_MOD_MASK_4
 #define POINTER_MOTION_INTERVAL  17
 #define EXTERNAL_RULES_COMMAND   ""
@@ -49,17 +46,22 @@
 #define GAPLESS_MONOCLE             false
 #define PADDINGLESS_MONOCLE         false
 #define SINGLE_MONOCLE              false
+
 #define FOCUS_FOLLOWS_POINTER       false
 #define POINTER_FOLLOWS_FOCUS       false
 #define POINTER_FOLLOWS_MONITOR     false
-#define IGNORE_EWMH_FOCUS           false
-#define CENTER_PSEUDO_TILED         true
-#define CLICK_TO_FOCUS              -1
+#define CLICK_TO_FOCUS              XCB_BUTTON_INDEX_1
 #define SWALLOW_FIRST_CLICK         false
+#define IGNORE_EWMH_FOCUS           true
+#define IGNORE_EWMH_FULLSCREEN      0
+
+#define CENTER_PSEUDO_TILED         true
 #define HONOR_SIZE_HINTS            false
-#define REMOVE_DISABLED_MONITORS    false
-#define REMOVE_UNPLUGGED_MONITORS   false
-#define MERGE_OVERLAPPING_MONITORS  false
+#define MAPPING_EVENTS_COUNT        1
+
+#define REMOVE_DISABLED_MONITORS    true
+#define REMOVE_UNPLUGGED_MONITORS   true
+#define MERGE_OVERLAPPING_MONITORS  true
 
 char external_rules_command[MAXLEN];
 char status_prefix[MAXLEN];
@@ -79,19 +81,24 @@ tightness_t directional_focus_tightness;
 uint16_t pointer_modifier;
 uint32_t pointer_motion_interval;
 pointer_action_t pointer_actions[3];
+int8_t mapping_events_count;
 
 bool borderless_monocle;
 bool gapless_monocle;
 bool paddingless_monocle;
 bool single_monocle;
+
 bool focus_follows_pointer;
 bool pointer_follows_focus;
 bool pointer_follows_monitor;
-bool ignore_ewmh_focus;
-bool center_pseudo_tiled;
 int8_t click_to_focus;
 bool swallow_first_click;
+bool ignore_ewmh_focus;
+state_transition_t ignore_ewmh_fullscreen;
+
+bool center_pseudo_tiled;
 bool honor_size_hints;
+
 bool remove_disabled_monitors;
 bool remove_unplugged_monitors;
 bool merge_overlapping_monitors;

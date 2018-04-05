@@ -71,6 +71,9 @@ void handle_event(xcb_generic_event_t *evt)
 		case XCB_FOCUS_IN:
 			focus_in(evt);
 			break;
+		case XCB_MAPPING_NOTIFY:
+			mapping_notify(evt);
+			break;
 		case 0:
 			process_error(evt);
 			break;
@@ -171,7 +174,7 @@ void configure_request(xcb_generic_event_t *evt)
 
 		monitor_t *m = monitor_from_client(c);
 		if (m != loc.monitor) {
-			transfer_node(loc.monitor, loc.desktop, loc.node, m, m->desk, m->desk->focus);
+			transfer_node(loc.monitor, loc.desktop, loc.node, m, m->desk, m->desk->focus, false);
 		}
 	} else {
 		if (c->state == STATE_PSEUDO_TILED) {
@@ -240,8 +243,15 @@ void unmap_notify(xcb_generic_event_t *evt)
 		 * related unmap notify event. This is a technique used by i3-wm to
 		 * filter enter notify events. */
 		motion_recorder.sequence = e->sequence;
+		return;
 	}
 
+	/* Filter out destroyed windows */
+	if (!window_exists(e->window)) {
+		return;
+	}
+
+	set_window_state(e->window, XCB_ICCCM_WM_STATE_WITHDRAWN);
 	unmanage_window(e->window);
 }
 
@@ -308,7 +318,7 @@ void client_message(xcb_generic_event_t *evt)
 	} else if (e->type == ewmh->_NET_WM_DESKTOP) {
 		coordinates_t dloc;
 		if (ewmh_locate_desktop(e->data.data32[0], &dloc)) {
-			transfer_node(loc.monitor, loc.desktop, loc.node, dloc.monitor, dloc.desktop, dloc.desktop->focus);
+			transfer_node(loc.monitor, loc.desktop, loc.node, dloc.monitor, dloc.desktop, dloc.desktop->focus, false);
 		}
 	} else if (e->type == ewmh->_NET_CLOSE_WINDOW) {
 		close_node(loc.node);
@@ -344,7 +354,7 @@ void button_press(xcb_generic_event_t *evt)
 		if (e->detail != BUTTONS[i]) {
 			continue;
 		}
-		if ((click_to_focus == XCB_BUTTON_INDEX_ANY || click_to_focus == BUTTONS[i]) &&
+		if ((click_to_focus == (int8_t) XCB_BUTTON_INDEX_ANY || click_to_focus == (int8_t) BUTTONS[i]) &&
 			cleaned_mask(e->state) == XCB_NONE) {
 			bool pff = pointer_follows_focus;
 			bool pfm = pointer_follows_monitor;
@@ -438,14 +448,18 @@ void motion_notify(xcb_generic_event_t *evt)
 void handle_state(monitor_t *m, desktop_t *d, node_t *n, xcb_atom_t state, unsigned int action)
 {
 	if (state == ewmh->_NET_WM_STATE_FULLSCREEN) {
-		if (action == XCB_EWMH_WM_STATE_ADD) {
+		if (action == XCB_EWMH_WM_STATE_ADD && (ignore_ewmh_fullscreen & STATE_TRANSITION_ENTER) == 0) {
 			set_state(m, d, n, STATE_FULLSCREEN);
-		} else if (action == XCB_EWMH_WM_STATE_REMOVE) {
+		} else if (action == XCB_EWMH_WM_STATE_REMOVE && (ignore_ewmh_fullscreen & STATE_TRANSITION_EXIT) == 0) {
 			if (n->client->state == STATE_FULLSCREEN) {
 				set_state(m, d, n, n->client->last_state);
 			}
 		} else if (action == XCB_EWMH_WM_STATE_TOGGLE) {
-			set_state(m, d, n, IS_FULLSCREEN(n->client) ? n->client->last_state : STATE_FULLSCREEN);
+			client_state_t next_state = IS_FULLSCREEN(n->client) ? n->client->last_state : STATE_FULLSCREEN;
+			if ((next_state == STATE_FULLSCREEN && (ignore_ewmh_fullscreen & STATE_TRANSITION_ENTER) == 0) ||
+			    (next_state != STATE_FULLSCREEN && (ignore_ewmh_fullscreen & STATE_TRANSITION_EXIT) == 0)) {
+				set_state(m, d, n, next_state);
+			}
 		}
 		arrange(m, d);
 	} else if (state == ewmh->_NET_WM_STATE_BELOW) {
@@ -512,8 +526,32 @@ void handle_state(monitor_t *m, desktop_t *d, node_t *n, xcb_atom_t state, unsig
 #undef HANDLE_WM_STATE
 }
 
+void mapping_notify(xcb_generic_event_t *evt)
+{
+	if (mapping_events_count == 0) {
+		return;
+	}
+
+	xcb_mapping_notify_event_t *e = (xcb_mapping_notify_event_t *) evt;
+
+	if (e->request == XCB_MAPPING_POINTER) {
+		return;
+	}
+
+	if (mapping_events_count > 0) {
+		mapping_events_count--;
+	}
+
+	ungrab_buttons();
+	grab_buttons();
+}
+
 void process_error(xcb_generic_event_t *evt)
 {
 	xcb_request_error_t *e = (xcb_request_error_t *) evt;
+	/* Ignore unavoidable failed requests */
+	if (e->error_code == ERROR_CODE_BAD_WINDOW) {
+		return;
+	}
 	warn("Failed request: %s, %s: 0x%08X.\n", xcb_event_get_request_label(e->major_opcode), xcb_event_get_error_label(e->error_code), e->bad_value);
 }

@@ -25,6 +25,8 @@
 #ifndef BSPWM_SUBSCRIBE_H
 #define BSPWM_SUBSCRIBE_H
 
+#define FIFO_TEMPLATE  "bspwm_fifo.XXXXXX"
+
 typedef enum {
 	SBSC_MASK_REPORT = 1 << 0,
 	SBSC_MASK_MONITOR_ADD = 1 << 1,
@@ -41,8 +43,8 @@ typedef enum {
 	SBSC_MASK_DESKTOP_FOCUS = 1 << 12,
 	SBSC_MASK_DESKTOP_ACTIVATE = 1 << 13,
 	SBSC_MASK_DESKTOP_LAYOUT = 1 << 14,
-	SBSC_MASK_NODE_MANAGE = 1 << 15,
-	SBSC_MASK_NODE_UNMANAGE = 1 << 16,
+	SBSC_MASK_NODE_ADD = 1 << 15,
+	SBSC_MASK_NODE_REMOVE = 1 << 16,
 	SBSC_MASK_NODE_SWAP = 1 << 17,
 	SBSC_MASK_NODE_TRANSFER = 1 << 18,
 	SBSC_MASK_NODE_FOCUS = 1 << 19,
@@ -60,9 +62,9 @@ typedef enum {
 	SBSC_MASK_ALL = (1 << 28) - 1
 } subscriber_mask_t;
 
-subscriber_list_t *make_subscriber_list(FILE *stream, int field);
+subscriber_list_t *make_subscriber_list(FILE *stream, char *fifo_path, int field, int count);
 void remove_subscriber(subscriber_list_t *sb);
-void add_subscriber(FILE *stream, int field);
+void add_subscriber(FILE *stream, char* fifo_path, int field, int count);
 int print_report(FILE *stream);
 void put_status(subscriber_mask_t mask, ...);
 

@@ -60,6 +60,7 @@ void load_settings(void)
 	directional_focus_tightness = TIGHTNESS_HIGH;
 	pointer_modifier = POINTER_MODIFIER;
 	pointer_motion_interval = POINTER_MOTION_INTERVAL;
+	mapping_events_count = MAPPING_EVENTS_COUNT;
 
 	pointer_actions[0] = ACTION_MOVE;
 	pointer_actions[1] = ACTION_RESIZE_SIDE;
@@ -69,14 +70,18 @@ void load_settings(void)
 	gapless_monocle = GAPLESS_MONOCLE;
 	paddingless_monocle = PADDINGLESS_MONOCLE;
 	single_monocle = SINGLE_MONOCLE;
+
 	focus_follows_pointer = FOCUS_FOLLOWS_POINTER;
 	pointer_follows_focus = POINTER_FOLLOWS_FOCUS;
 	pointer_follows_monitor = POINTER_FOLLOWS_MONITOR;
-	ignore_ewmh_focus = IGNORE_EWMH_FOCUS;
-	center_pseudo_tiled = CENTER_PSEUDO_TILED;
 	click_to_focus = CLICK_TO_FOCUS;
 	swallow_first_click = SWALLOW_FIRST_CLICK;
+	ignore_ewmh_focus = IGNORE_EWMH_FOCUS;
+	ignore_ewmh_fullscreen = IGNORE_EWMH_FULLSCREEN;
+
+	center_pseudo_tiled = CENTER_PSEUDO_TILED;
 	honor_size_hints = HONOR_SIZE_HINTS;
+
 	remove_disabled_monitors = REMOVE_DISABLED_MONITORS;
 	remove_unplugged_monitors = REMOVE_UNPLUGGED_MONITORS;
 	merge_overlapping_monitors = MERGE_OVERLAPPING_MONITORS;

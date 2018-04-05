@@ -179,9 +179,13 @@ bool restore_tree(const char *file_path)
 	}
 
 	for (monitor_t *m = mon_head; m != NULL; m = m->next) {
+		m->id = xcb_generate_id(dpy);
 		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
+			d->id = xcb_generate_id(dpy);
+			regenerate_ids_in(d->root);
 			refresh_presel_feedbacks(m, d, d->root);
 			restack_presel_feedbacks(d);
+
 			for (node_t *n = first_extrema(d->root); n != NULL; n = next_leaf(n, d->root)) {
 				if (n->client == NULL) {
 					continue;
@@ -355,6 +359,7 @@ node_t *restore_node(jsmntok_t **t, char *json)
 			RESTORE_BOOL(sticky, &n->sticky)
 			RESTORE_BOOL(private, &n->private)
 			RESTORE_BOOL(locked, &n->locked)
+			RESTORE_BOOL(marked, &n->marked)
 			} else if (keyeq("presel", *t, json)) {
 				(*t)++;
 				n->presel = restore_presel(t, json);

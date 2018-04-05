@@ -306,7 +306,7 @@ void merge_monitors(monitor_t *ms, monitor_t *md)
 	desktop_t *d = ms->desk_head;
 	while (d != NULL) {
 		desktop_t *next = d->next;
-		transfer_desktop(ms, md, d);
+		transfer_desktop(ms, md, d, false);
 		d = next;
 	}
 }
@@ -362,7 +362,7 @@ bool swap_monitors(monitor_t *m1, monitor_t *m2)
 	return true;
 }
 
-monitor_t *closest_monitor(monitor_t *m, cycle_dir_t dir, monitor_select_t sel)
+monitor_t *closest_monitor(monitor_t *m, cycle_dir_t dir, monitor_select_t *sel)
 {
 	monitor_t *f = (dir == CYCLE_PREV ? m->prev : m->next);
 
@@ -419,9 +419,9 @@ monitor_t *monitor_from_client(client_t *c)
 	return nearest;
 }
 
-monitor_t *nearest_monitor(monitor_t *m, direction_t dir, monitor_select_t sel)
+monitor_t *nearest_monitor(monitor_t *m, direction_t dir, monitor_select_t *sel)
 {
-	double dmin = UINT32_MAX;
+	uint32_t dmin = UINT32_MAX;
 	monitor_t *nearest = NULL;
 	xcb_rectangle_t rect = m->rectangle;
 	for (monitor_t *f = mon_head; f != NULL; f = f->next) {
@@ -439,6 +439,18 @@ monitor_t *nearest_monitor(monitor_t *m, direction_t dir, monitor_select_t sel)
 		}
 	}
 	return nearest;
+}
+
+bool find_any_monitor(coordinates_t *ref, coordinates_t *dst, monitor_select_t *sel)
+{
+	for (monitor_t *m = mon_head; m != NULL; m = m->next) {
+		coordinates_t loc = {m, NULL, NULL};
+		if (monitor_matches(&loc, ref, sel)) {
+			*dst = loc;
+			return true;
+		}
+	}
+	return false;
 }
 
 bool update_monitors(void)

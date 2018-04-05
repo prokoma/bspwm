@@ -144,6 +144,11 @@ typedef enum {
 	TIGHTNESS_HIGH,
 } tightness_t;
 
+typedef enum {
+	STATE_TRANSITION_ENTER = 1 << 0,
+	STATE_TRANSITION_EXIT = 1 << 1,
+} state_transition_t;
+
 typedef struct {
 	option_bool_t automatic;
 	option_bool_t focused;
@@ -159,6 +164,7 @@ typedef struct {
 	option_bool_t sticky;
 	option_bool_t private;
 	option_bool_t locked;
+	option_bool_t marked;
 	option_bool_t urgent;
 	option_bool_t same_class;
 	option_bool_t descendant_of;
@@ -231,6 +237,7 @@ struct node_t {
 	bool sticky;
 	bool private;
 	bool locked;
+	bool marked;
 	node_t *first_child;
 	node_t *second_child;
 	node_t *parent;
@@ -303,7 +310,9 @@ typedef struct subscriber_list_t subscriber_list_t;
 struct subscriber_list_t {
 	int fd;
 	FILE *stream;
+	char* fifo_path;
 	int field;
+	int count;
 	subscriber_list_t *prev;
 	subscriber_list_t *next;
 };
@@ -332,6 +341,7 @@ typedef struct {
 	bool sticky;
 	bool private;
 	bool locked;
+	bool marked;
 	bool center;
 	bool follow;
 	bool manage;

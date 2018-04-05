@@ -161,7 +161,7 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 	f = insert_node(m, d, n, f);
 	clients_count++;
 
-	put_status(SBSC_MASK_NODE_MANAGE, "node_manage 0x%08X 0x%08X 0x%08X 0x%08X\n", m->id, d->id, win, f!=NULL?f->id:0);
+	put_status(SBSC_MASK_NODE_ADD, "node_add 0x%08X 0x%08X 0x%08X 0x%08X\n", m->id, d->id, f!=NULL?f->id:0, win);
 
 	if (f != NULL && f->client != NULL && csq->state != NULL && *(csq->state) == STATE_FLOATING) {
 		c->layer = f->client->layer;
@@ -179,6 +179,7 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 	set_sticky(m, d, n, csq->sticky);
 	set_private(m, d, n, csq->private);
 	set_locked(m, d, n, csq->locked);
+	set_marked(m, d, n, csq->marked);
 
 	arrange(m, d);
 
@@ -220,9 +221,8 @@ void unmanage_window(xcb_window_t win)
 {
 	coordinates_t loc;
 	if (locate_window(win, &loc)) {
-		put_status(SBSC_MASK_NODE_UNMANAGE, "node_unmanage 0x%08X 0x%08X 0x%08X\n", loc.monitor->id, loc.desktop->id, win);
+		put_status(SBSC_MASK_NODE_REMOVE, "node_remove 0x%08X 0x%08X 0x%08X\n", loc.monitor->id, loc.desktop->id, win);
 		remove_node(loc.monitor, loc.desktop, loc.node);
-		set_window_state(win, XCB_ICCCM_WM_STATE_WITHDRAWN);
 		arrange(loc.monitor, loc.desktop);
 	} else {
 		for (pending_rule_t *pr = pending_rule_head; pr != NULL; pr = pr->next) {
@@ -488,7 +488,7 @@ bool move_client(coordinates_t *loc, int dx, int dy)
 		coordinates_t dst;
 		bool is_managed = (pwin != XCB_NONE && locate_window(pwin, &dst));
 		if (is_managed && dst.monitor == loc->monitor && IS_TILED(dst.node->client)) {
-			swap_nodes(loc->monitor, loc->desktop, n, loc->monitor, loc->desktop, dst.node);
+			swap_nodes(loc->monitor, loc->desktop, n, loc->monitor, loc->desktop, dst.node, false);
 			return true;
 		} else {
 			if (is_managed && dst.monitor == loc->monitor) {
@@ -519,18 +519,14 @@ bool move_client(coordinates_t *loc, int dx, int dy)
 		return true;
 	}
 
-	bool focused = (n == mon->desk->focus);
-	transfer_node(loc->monitor, loc->desktop, n, pm, pm->desk, pm->desk->focus);
+	transfer_node(loc->monitor, loc->desktop, n, pm, pm->desk, pm->desk->focus, true);
 	loc->monitor = pm;
 	loc->desktop = pm->desk;
-	if (focused) {
-		focus_node(pm, pm->desk, n);
-	}
 
 	return true;
 }
 
-bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy)
+bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy, bool relative)
 {
 	node_t *n = loc->node;
 	if (n == NULL || n->client == NULL || n->client->state == STATE_FULLSCREEN) {
@@ -555,21 +551,45 @@ bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy)
 			return false;
 		}
 		if (vertical_fence != NULL) {
-			double sr = vertical_fence->split_ratio + (double) dx / vertical_fence->rectangle.width;
+			double sr = 0.0;
+			if (relative) {
+				sr = vertical_fence->split_ratio + (double) dx / (double) vertical_fence->rectangle.width;
+			} else {
+				sr = (double) (dx - vertical_fence->rectangle.x) / (double) vertical_fence->rectangle.width;
+			}
 			sr = MAX(0, sr);
 			sr = MIN(1, sr);
 			vertical_fence->split_ratio = sr;
 		}
 		if (horizontal_fence != NULL) {
-			double sr = horizontal_fence->split_ratio + (double) dy / horizontal_fence->rectangle.height;
+			double sr = 0.0;
+			if (relative) {
+				sr = horizontal_fence->split_ratio + (double) dy / (double) horizontal_fence->rectangle.height;
+			} else {
+				sr = (double) (dy - horizontal_fence->rectangle.y) / (double) horizontal_fence->rectangle.height;
+			}
 			sr = MAX(0, sr);
 			sr = MIN(1, sr);
 			horizontal_fence->split_ratio = sr;
 		}
 		arrange(loc->monitor, loc->desktop);
 	} else {
-		int w = width + dx * (rh & HANDLE_LEFT ? -1 : (rh & HANDLE_RIGHT ? 1 : 0));
-		int h = height + dy * (rh & HANDLE_TOP ? -1 : (rh & HANDLE_BOTTOM ? 1 : 0));
+		int w = width, h = height;
+		if (relative) {
+			w += dx * (rh & HANDLE_LEFT ? -1 : (rh & HANDLE_RIGHT ? 1 : 0));
+			h += dy * (rh & HANDLE_TOP ? -1 : (rh & HANDLE_BOTTOM ? 1 : 0));
+		} else {
+			if (rh & HANDLE_LEFT) {
+				w = x + width - dx;
+			} else if (rh & HANDLE_RIGHT) {
+				w = dx - x;
+			}
+			if (rh & HANDLE_TOP) {
+				h = y + height - dy;
+			} else if (rh & HANDLE_BOTTOM) {
+				h = dy - y;
+			}
+		}
 		width = MAX(1, w);
 		height = MAX(1, h);
 		apply_size_hints(n->client, &width, &height);
@@ -848,9 +868,11 @@ void window_set_visibility(xcb_window_t win, bool visible)
 	uint32_t values_on[] = {ROOT_EVENT_MASK};
 	xcb_change_window_attributes(dpy, root, XCB_CW_EVENT_MASK, values_off);
 	if (visible) {
+		set_window_state(win, XCB_ICCCM_WM_STATE_NORMAL);
 		xcb_map_window(dpy, win);
 	} else {
 		xcb_unmap_window(dpy, win);
+		set_window_state(win, XCB_ICCCM_WM_STATE_ICONIC);
 	}
 	xcb_change_window_attributes(dpy, root, XCB_CW_EVENT_MASK, values_on);
 }
@@ -928,4 +950,17 @@ void send_client_message(xcb_window_t win, xcb_atom_t property, xcb_atom_t value
 	xcb_send_event(dpy, false, win, XCB_EVENT_MASK_NO_EVENT, (char *) e);
 	xcb_flush(dpy);
 	free(e);
+}
+
+bool window_exists(xcb_window_t win)
+{
+	xcb_generic_error_t *err;
+	free(xcb_query_tree_reply(dpy, xcb_query_tree(dpy, win), &err));
+
+	if (err != NULL) {
+		free(err);
+		return false;
+	}
+
+	return true;
 }
