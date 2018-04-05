@@ -13,7 +13,6 @@ Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/bspwm.git/
 
 Package: bspwm
 Architecture: any
-Section: x11
 Depends: ${shlibs:Depends},
  ${misc:Depends},
  x11-utils,
