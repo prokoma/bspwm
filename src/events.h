@@ -28,6 +28,8 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
 
+#define ERROR_CODE_BAD_WINDOW  3
+
 uint8_t randr_base;
 static const xcb_button_index_t BUTTONS[] = {XCB_BUTTON_INDEX_1, XCB_BUTTON_INDEX_2, XCB_BUTTON_INDEX_3};
 
@@ -44,6 +46,7 @@ void button_press(xcb_generic_event_t *evt);
 void enter_notify(xcb_generic_event_t *evt);
 void motion_notify(xcb_generic_event_t *evt);
 void handle_state(monitor_t *m, desktop_t *d, node_t *n, xcb_atom_t state, unsigned int action);
+void mapping_notify(xcb_generic_event_t *evt);
 void process_error(xcb_generic_event_t *evt);
 
 #endif

@@ -215,7 +215,6 @@ bool parse_modifier_mask(char *s, uint16_t *m)
 
 bool parse_button_index(char *s, int8_t *b)
 {
-	bool v;
 	if (strcmp(s, "any") == 0) {
 		*b = XCB_BUTTON_INDEX_ANY;
 		return true;
@@ -230,13 +229,6 @@ bool parse_button_index(char *s, int8_t *b)
 		return true;
 	} else if (strcmp(s, "none") == 0) {
 		*b = -1;
-		return true;
-	} else if (parse_bool(s, &v)) {
-		if (v) {
-			*b = XCB_BUTTON_INDEX_1;
-		} else {
-			*b = -1;
-		}
 		return true;
 	}
 	return false;
@@ -271,6 +263,55 @@ bool parse_child_polarity(char *s, child_polarity_t *p)
 	} else if (streq("second_child", s)) {
 		*p = SECOND_CHILD;
 		return true;
+	}
+	return false;
+}
+
+bool parse_automatic_scheme(char *s, automatic_scheme_t *a)
+{
+	if (streq("longest_side", s)) {
+		*a = SCHEME_LONGEST_SIDE;
+		return true;
+	} else if (streq("alternate", s)) {
+		*a = SCHEME_ALTERNATE;
+		return true;
+	} else if (streq("spiral", s)) {
+		*a = SCHEME_SPIRAL;
+		return true;
+	}
+	return false;
+}
+
+bool parse_state_transition(char *s, state_transition_t *m)
+{
+	if (streq("none", s)) {
+		*m = 0;
+		return true;
+	} else if (streq("all", s)) {
+		*m = STATE_TRANSITION_ENTER | STATE_TRANSITION_EXIT;
+		return true;
+	} else {
+		state_transition_t w = 0;
+		char *x = copy_string(s, strlen(s));
+		char *key = strtok(x, ",");
+		while (key != NULL) {
+			if (streq("enter", key)) {
+				w |= STATE_TRANSITION_ENTER;
+			} else if (streq("exit", key)) {
+				w |= STATE_TRANSITION_EXIT;
+			} else {
+				free(x);
+				return false;
+			}
+			key = strtok(NULL, ",");
+		}
+		free(x);
+		if (w != 0) {
+			*m = w;
+			return true;
+		} else {
+			return false;
+		}
 	}
 	return false;
 }
@@ -363,10 +404,10 @@ bool parse_subscriber_mask(char *s, subscriber_mask_t *mask)
 		*mask = SBSC_MASK_MONITOR;
 	} else if (streq("pointer_action", s)) {
 		*mask = SBSC_MASK_POINTER_ACTION;
-	} else if (streq("node_manage", s)) {
-		*mask = SBSC_MASK_NODE_MANAGE;
-	} else if (streq("node_unmanage", s)) {
-		*mask = SBSC_MASK_NODE_UNMANAGE;
+	} else if (streq("node_add", s)) {
+		*mask = SBSC_MASK_NODE_ADD;
+	} else if (streq("node_remove", s)) {
+		*mask = SBSC_MASK_NODE_REMOVE;
 	} else if (streq("node_swap", s)) {
 		*mask = SBSC_MASK_NODE_SWAP;
 	} else if (streq("node_transfer", s)) {
@@ -459,6 +500,7 @@ bool parse_desktop_modifiers(char *desc, desktop_select_t *sel)
 		} else if (streq("!occupied", tok)) {
 			sel->occupied = OPTION_FALSE;
 		GET_MOD(focused)
+		GET_MOD(active)
 		GET_MOD(urgent)
 		GET_MOD(local)
 		} else {
@@ -481,8 +523,8 @@ bool parse_node_modifiers(char *desc, node_select_t *sel)
 			sel->tiled = OPTION_FALSE;
 		GET_MOD(automatic)
 		GET_MOD(focused)
-		GET_MOD(local)
 		GET_MOD(active)
+		GET_MOD(local)
 		GET_MOD(leaf)
 		GET_MOD(window)
 		GET_MOD(pseudo_tiled)
@@ -492,6 +534,7 @@ bool parse_node_modifiers(char *desc, node_select_t *sel)
 		GET_MOD(sticky)
 		GET_MOD(private)
 		GET_MOD(locked)
+		GET_MOD(marked)
 		GET_MOD(urgent)
 		GET_MOD(same_class)
 		GET_MOD(descendant_of)

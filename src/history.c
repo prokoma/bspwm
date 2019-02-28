@@ -27,6 +27,7 @@
 #include "bspwm.h"
 #include "tree.h"
 #include "query.h"
+#include "history.h"
 
 history_t *make_history(monitor_t *m, desktop_t *d, node_t *n)
 {
@@ -37,69 +38,76 @@ history_t *make_history(monitor_t *m, desktop_t *d, node_t *n)
 	return h;
 }
 
-void history_add(monitor_t *m, desktop_t *d, node_t *n)
+void history_add(monitor_t *m, desktop_t *d, node_t *n, bool focused)
 {
 	if (!record_history) {
 		return;
 	}
-	history_needle = NULL;
+
+	if (focused) {
+		history_needle = NULL;
+	}
+
 	history_t *h = make_history(m, d, n);
+
 	if (history_head == NULL) {
 		history_head = history_tail = h;
 	} else if ((n != NULL && history_tail->loc.node != n) || (n == NULL && d != history_tail->loc.desktop)) {
+		history_t *ip = focused ? history_tail : NULL;
+
 		for (history_t *hh = history_tail; hh != NULL; hh = hh->prev) {
 			if ((n != NULL && hh->loc.node == n) || (n == NULL && d == hh->loc.desktop)) {
 				hh->latest = false;
 			}
+			if (ip == NULL && ((n != NULL && hh->loc.desktop == d) || (n == NULL && hh->loc.monitor == m))) {
+				ip = hh;
+			}
 		}
-		history_tail->next = h;
-		h->prev = history_tail;
-		history_tail = h;
+
+		if (ip != NULL) {
+			history_insert_after(h, ip);
+		} else {
+			ip = history_head;
+			if (n != NULL) {
+				for (history_t *hh = history_head; hh != NULL; hh = hh->next) {
+					if (hh->latest && hh->loc.monitor == m) {
+						ip = hh;
+						break;
+					}
+				}
+			}
+			history_insert_before(h, ip);
+		}
 	} else {
 		free(h);
 	}
 }
 
-void history_transfer_node(monitor_t *m, desktop_t *d, node_t *n)
+// Inserts `a` after `b`.
+void history_insert_after(history_t *a, history_t *b)
 {
-	for (history_t *h = history_head; h != NULL; h = h->next) {
-		if (is_descendant(h->loc.node, n)) {
-			h->loc.monitor = m;
-			h->loc.desktop = d;
-		}
+	a->next = b->next;
+	if (b->next != NULL) {
+		b->next->prev = a;
+	}
+	b->next = a;
+	a->prev = b;
+	if (history_tail == b) {
+		history_tail = a;
 	}
 }
 
-void history_transfer_desktop(monitor_t *m, desktop_t *d)
+// Inserts `a` before `b`.
+void history_insert_before(history_t *a, history_t *b)
 {
-	for (history_t *h = history_head; h != NULL; h = h->next) {
-		if (h->loc.desktop == d) {
-			h->loc.monitor = m;
-		}
+	a->prev = b->prev;
+	if (b->prev != NULL) {
+		b->prev->next = a;
 	}
-}
-
-void history_swap_nodes(monitor_t *m1, desktop_t *d1, node_t *n1, monitor_t *m2, desktop_t *d2, node_t *n2)
-{
-	for (history_t *h = history_head; h != NULL; h = h->next) {
-		if (is_descendant(h->loc.node, n1)) {
-			h->loc.monitor = m2;
-			h->loc.desktop = d2;
-		} else if (is_descendant(h->loc.node, n2)) {
-			h->loc.monitor = m1;
-			h->loc.desktop = d1;
-		}
-	}
-}
-
-void history_swap_desktops(monitor_t *m1, desktop_t *d1, monitor_t *m2, desktop_t *d2)
-{
-	for (history_t *h = history_head; h != NULL; h = h->next) {
-		if (h->loc.desktop == d1) {
-			h->loc.monitor = m2;
-		} else if (h->loc.desktop == d2) {
-			h->loc.monitor = m1;
-		}
+	b->prev = a;
+	a->next = b;
+	if (history_head == b) {
+		history_head = a;
 	}
 }
 
@@ -191,7 +199,22 @@ monitor_t *history_last_monitor(monitor_t *m)
 	return NULL;
 }
 
-bool history_find_node(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst, node_select_t sel)
+bool history_find_newest_node(coordinates_t *ref, coordinates_t *dst, node_select_t *sel)
+{
+	for (history_t *h = history_tail; h != NULL; h = h->prev) {
+		if (h->loc.node == NULL ||
+		    h->loc.node->hidden ||
+		    !node_matches(&h->loc, ref, sel)) {
+			continue;
+		}
+		*dst = h->loc;
+		return true;
+	}
+
+	return false;
+}
+
+bool history_find_node(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst, node_select_t *sel)
 {
 	if (history_needle == NULL || record_history) {
 		history_needle = history_tail;
@@ -215,7 +238,19 @@ bool history_find_node(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst
 	return false;
 }
 
-bool history_find_desktop(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst, desktop_select_t sel)
+bool history_find_newest_desktop(coordinates_t *ref, coordinates_t *dst, desktop_select_t *sel)
+{
+	for (history_t *h = history_tail; h != NULL; h = h->prev) {
+		if (desktop_matches(&h->loc, ref, sel)) {
+			*dst = h->loc;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool history_find_desktop(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst, desktop_select_t *sel)
 {
 	if (history_needle == NULL || record_history) {
 		history_needle = history_tail;
@@ -237,7 +272,19 @@ bool history_find_desktop(history_dir_t hdi, coordinates_t *ref, coordinates_t *
 	return false;
 }
 
-bool history_find_monitor(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst, monitor_select_t sel)
+bool history_find_newest_monitor(coordinates_t *ref, coordinates_t *dst, monitor_select_t *sel)
+{
+	for (history_t *h = history_tail; h != NULL; h = h->prev) {
+		if (monitor_matches(&h->loc, ref, sel)) {
+			*dst = h->loc;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool history_find_monitor(history_dir_t hdi, coordinates_t *ref, coordinates_t *dst, monitor_select_t *sel)
 {
 	if (history_needle == NULL || record_history) {
 		history_needle = history_tail;

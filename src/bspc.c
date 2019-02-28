@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <poll.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include "helpers.h"
@@ -34,7 +35,7 @@
 
 int main(int argc, char *argv[])
 {
-	int fd;
+	int sock_fd;
 	struct sockaddr_un sock_address;
 	char msg[BUFSIZ], rsp[BUFSIZ];
 
@@ -45,7 +46,7 @@ int main(int argc, char *argv[])
 	sock_address.sun_family = AF_UNIX;
 	char *sp;
 
-	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+	if ((sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 		err("Failed to create the socket.\n");
 	}
 
@@ -61,7 +62,7 @@ int main(int argc, char *argv[])
 		free(host);
 	}
 
-	if (connect(fd, (struct sockaddr *) &sock_address, sizeof(sock_address)) == -1) {
+	if (connect(sock_fd, (struct sockaddr *) &sock_address, sizeof(sock_address)) == -1) {
 		err("Failed to connect to the socket.\n");
 	}
 
@@ -73,22 +74,37 @@ int main(int argc, char *argv[])
 		msg_len += n;
 	}
 
-	if (send(fd, msg, msg_len, 0) == -1) {
+	if (send(sock_fd, msg, msg_len, 0) == -1) {
 		err("Failed to send the data.\n");
 	}
 
 	int ret = EXIT_SUCCESS, nb;
-	while ((nb = recv(fd, rsp, sizeof(rsp)-1, 0)) > 0) {
-		rsp[nb] = '\0';
-		if (rsp[0] == FAILURE_MESSAGE[0]) {
-			ret = EXIT_FAILURE;
-			printf("%s", rsp + 1);
-		} else {
-			printf("%s", rsp);
+
+	struct pollfd fds[] = {
+		{sock_fd, POLLIN, 0},
+		{STDOUT_FILENO, POLLHUP, 0},
+	};
+
+	while (poll(fds, 2, -1) > 0) {
+		if (fds[1].revents & (POLLERR | POLLHUP)) {
+			break;
 		}
-		fflush(stdout);
+		if (fds[0].revents & POLLIN) {
+			if ((nb = recv(sock_fd, rsp, sizeof(rsp)-1, 0)) > 0) {
+				rsp[nb] = '\0';
+				if (rsp[0] == FAILURE_MESSAGE[0]) {
+					ret = EXIT_FAILURE;
+					printf("%s", rsp + 1);
+				} else {
+					printf("%s", rsp);
+				}
+				fflush(stdout);
+			} else {
+				break;
+			}
+		}
 	}
 
-	close(fd);
+	close(sock_fd);
 	return ret;
 }

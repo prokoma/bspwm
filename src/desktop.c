@@ -56,14 +56,26 @@ void focus_desktop(monitor_t *m, desktop_t *d)
 
 bool activate_desktop(monitor_t *m, desktop_t *d)
 {
-	if (m == mon || d == m->desk) {
+	if (d != NULL && m == mon) {
 		return false;
 	}
 
-	if (m->sticky_count > 0) {
-		sticky_still = false;
-		transfer_sticky_nodes(m, m->desk, d, m->desk->root);
-		sticky_still = true;
+	if (d == NULL) {
+		d = m->desk;
+		if (d == NULL) {
+			d = history_last_desktop(m, NULL);
+		}
+		if (d == NULL) {
+			d = m->desk_head;
+		}
+	}
+
+	if (d == NULL || d == m->desk) {
+		return false;
+	}
+
+	if (m->sticky_count > 0 && m->desk != NULL) {
+		transfer_sticky_nodes(m, m->desk, m, d, m->desk->root);
 	}
 
 	show_desktop(d);
@@ -71,13 +83,15 @@ bool activate_desktop(monitor_t *m, desktop_t *d)
 
 	m->desk = d;
 
+	history_add(m, d, NULL, false);
+
 	put_status(SBSC_MASK_DESKTOP_ACTIVATE, "desktop_activate 0x%08X 0x%08X\n", m->id, d->id);
 	put_status(SBSC_MASK_REPORT);
 
 	return true;
 }
 
-bool find_closest_desktop(coordinates_t *ref, coordinates_t *dst, cycle_dir_t dir, desktop_select_t sel)
+bool find_closest_desktop(coordinates_t *ref, coordinates_t *dst, cycle_dir_t dir, desktop_select_t *sel)
 {
 	monitor_t *m = ref->monitor;
 	desktop_t *d = ref->desktop;
@@ -107,25 +121,55 @@ bool find_closest_desktop(coordinates_t *ref, coordinates_t *dst, cycle_dir_t di
 	return false;
 }
 
-bool set_layout(monitor_t *m, desktop_t *d, layout_t l)
+bool find_any_desktop(coordinates_t *ref, coordinates_t *dst, desktop_select_t *sel)
 {
-	if (d->layout == l) {
+	for (monitor_t *m = mon_head; m != NULL; m = m->next) {
+		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
+			coordinates_t loc = {m, d, NULL};
+			if (desktop_matches(&loc, ref, sel)) {
+				*dst = loc;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool set_layout(monitor_t *m, desktop_t *d, layout_t l, bool user)
+{
+	if ((user && d->user_layout == l) || (!user && d->layout == l)) {
 		return false;
 	}
 
-	d->layout = l;
+	layout_t old_layout = d->layout;
 
-	handle_presel_feedbacks(m, d);
-
-	arrange(m, d);
-
-	put_status(SBSC_MASK_DESKTOP_LAYOUT, "desktop_layout 0x%08X 0x%08X %s\n", m->id, d->id, LAYOUT_STR(l));
-
-	if (d == m->desk) {
-		put_status(SBSC_MASK_REPORT);
+	if (user) {
+		d->user_layout = l;
+	} else {
+		d->layout = l;
 	}
 
-	return true;
+	if (user && (!single_monocle || tiled_count(d->root, true) > 1)) {
+		d->layout = l;
+	}
+
+	if (d->layout != old_layout) {
+		handle_presel_feedbacks(m, d);
+
+		if (user) {
+			arrange(m, d);
+		}
+
+		put_status(SBSC_MASK_DESKTOP_LAYOUT, "desktop_layout 0x%08X 0x%08X %s\n", m->id, d->id, LAYOUT_STR(d->layout));
+
+		if (d == m->desk) {
+			put_status(SBSC_MASK_REPORT);
+		}
+
+		return true;
+	} else {
+		return false;
+	}
 }
 
 void handle_presel_feedbacks(monitor_t *m, desktop_t *d)
@@ -140,42 +184,60 @@ void handle_presel_feedbacks(monitor_t *m, desktop_t *d)
 	}
 }
 
-bool transfer_desktop(monitor_t *ms, monitor_t *md, desktop_t *d)
+bool transfer_desktop(monitor_t *ms, monitor_t *md, desktop_t *d, bool follow)
 {
 	if (ms == NULL || md == NULL || d == NULL || ms == md) {
 		return false;
 	}
 
-	bool was_active = (d == ms->desk);
+	bool d_was_active = (d == ms->desk);
+	bool ms_was_focused = (ms == mon);
 
 	unlink_desktop(ms, d);
 
-	if (md->desk != NULL) {
+	if ((!follow || !d_was_active || !ms_was_focused) && md->desk != NULL) {
+		hide_sticky = false;
 		hide_desktop(d);
+		hide_sticky = true;
 	}
 
 	insert_desktop(md, d);
-	history_transfer_desktop(md, d);
+	history_remove(d, NULL, false);
 
-	if (was_active) {
-		if (mon == ms) {
-			focus_node(ms, NULL, NULL);
+	if (d_was_active) {
+		if (follow) {
+			if (activate_desktop(ms, NULL)) {
+				activate_node(ms, ms->desk, NULL);
+			}
+			if (ms_was_focused) {
+				focus_node(md, d, d->focus);
+			}
 		} else {
-			activate_node(ms, NULL, NULL);
+			if (ms_was_focused) {
+				focus_node(ms, ms->desk, NULL);
+			} else if (activate_desktop(ms, NULL)) {
+				activate_node(ms, ms->desk, NULL);
+			}
 		}
 	}
 
-	if (ms->sticky_count > 0 && was_active) {
-		sticky_still = false;
-		transfer_sticky_nodes(ms, d, ms->desk, d->root);
-		sticky_still = true;
+	if (ms->sticky_count > 0 && d_was_active) {
+		if (ms->desk != NULL) {
+			transfer_sticky_nodes(md, d, ms, ms->desk, d->root);
+		} else {
+			ms->sticky_count -= sticky_count(d->root);
+			md->sticky_count += sticky_count(d->root);
+			if (d != md->desk) {
+				transfer_sticky_nodes(md, d, md, md->desk, d->root);
+			}
+		}
 	}
 
 	adapt_geometry(&ms->rectangle, &md->rectangle, d->root);
 	arrange(md, d);
 
-	if (md->desk == d) {
-		if (mon == md) {
+	if ((!follow || !d_was_active || !ms_was_focused) && md->desk == d) {
+		if (md == mon) {
 			focus_node(md, d, d->focus);
 		} else {
 			activate_node(md, d, d->focus);
@@ -202,7 +264,8 @@ desktop_t *make_desktop(const char *name, uint32_t id)
 	}
 	d->prev = d->next = NULL;
 	d->root = d->focus = NULL;
-	d->layout = LAYOUT_TILED;
+	d->user_layout = LAYOUT_TILED;
+	d->layout = single_monocle ? LAYOUT_MONOCLE : LAYOUT_TILED;
 	d->padding = (padding_t) PADDING;
 	d->window_gap = window_gap;
 	d->border_width = border_width;
@@ -235,7 +298,7 @@ void insert_desktop(monitor_t *m, desktop_t *d)
 
 void add_desktop(monitor_t *m, desktop_t *d)
 {
-	put_status(SBSC_MASK_DESKTOP_ADD, "desktop_add 0x%08X %s 0x%08X\n", d->id, d->name, m->id);
+	put_status(SBSC_MASK_DESKTOP_ADD, "desktop_add 0x%08X 0x%08X %s\n", m->id, d->id, d->name);
 
 	d->border_width = m->border_width;
 	d->window_gap = m->window_gap;
@@ -308,7 +371,10 @@ void remove_desktop(monitor_t *m, desktop_t *d)
 		if (m == mon) {
 			focus_node(m, NULL, NULL);
 		} else {
-			activate_node(m, NULL, NULL);
+			activate_desktop(m, NULL);
+			if (m->desk != NULL) {
+				activate_node(m, m->desk, m->desk->focus);
+			}
 		}
 	}
 
@@ -320,10 +386,11 @@ void merge_desktops(monitor_t *ms, desktop_t *ds, monitor_t *md, desktop_t *dd)
 	if (ds == NULL || dd == NULL || ds == dd) {
 		return;
 	}
-	transfer_node(ms, ds, ds->root, md, dd, dd->focus);
+	/* TODO: Handle sticky nodes. */
+	transfer_node(ms, ds, ds->root, md, dd, dd->focus, false);
 }
 
-bool swap_desktops(monitor_t *m1, desktop_t *d1, monitor_t *m2, desktop_t *d2)
+bool swap_desktops(monitor_t *m1, desktop_t *d1, monitor_t *m2, desktop_t *d2, bool follow)
 {
 	if (d1 == NULL || d2 == NULL || d1 == d2 ||
 	    (m1->desk == d1 && m1->sticky_count > 0) ||
@@ -333,8 +400,10 @@ bool swap_desktops(monitor_t *m1, desktop_t *d1, monitor_t *m2, desktop_t *d2)
 
 	put_status(SBSC_MASK_DESKTOP_SWAP, "desktop_swap 0x%08X 0x%08X 0x%08X 0x%08X\n", m1->id, d1->id, m2->id, d2->id);
 
-	bool d1_focused = (m1->desk == d1);
-	bool d2_focused = (m2->desk == d2);
+	bool d1_was_active = (m1->desk == d1);
+	bool d2_was_active = (m2->desk == d2);
+	bool d1_was_focused = (mon->desk == d1);
+	bool d2_was_focused = (mon->desk == d2);
 
 	if (m1 != m2) {
 		if (m1->desk == d1) {
@@ -399,29 +468,48 @@ bool swap_desktops(monitor_t *m1, desktop_t *d1, monitor_t *m2, desktop_t *d2)
 	if (m1 != m2) {
 		adapt_geometry(&m1->rectangle, &m2->rectangle, d1->root);
 		adapt_geometry(&m2->rectangle, &m1->rectangle, d2->root);
-		history_swap_desktops(m1, d1, m2, d2);
+		history_remove(d1, NULL, false);
+		history_remove(d2, NULL, false);
 		arrange(m1, d2);
 		arrange(m2, d1);
 	}
 
-	if (d1_focused && !d2_focused) {
-		hide_desktop(d1);
+	if (d1_was_active && !d2_was_active) {
+		if ((!follow && m1 != m2) || !d1_was_focused) {
+			hide_desktop(d1);
+		}
 		show_desktop(d2);
-	} else if (!d1_focused && d2_focused) {
+	} else if (!d1_was_active && d2_was_active) {
 		show_desktop(d1);
-		hide_desktop(d2);
+		if ((!follow && m1 != m2) || !d2_was_focused) {
+			hide_desktop(d2);
+		}
 	}
 
-	if (d1 == mon->desk) {
-		focus_node(m2, d1, d1->focus);
-	} else if (d1 == m2->desk) {
-		activate_node(m2, d1, d1->focus);
-	}
+	if (follow || m1 == m2) {
+		if (d1_was_focused) {
+			focus_node(m2, d1, d1->focus);
+		} else if (d1_was_active) {
+			activate_node(m2, d1, d1->focus);
+		}
 
-	if (d2 == mon->desk) {
-		focus_node(m1, d2, d2->focus);
-	} else if (d2 == m1->desk) {
-		activate_node(m1, d2, d2->focus);
+		if (d2_was_focused) {
+			focus_node(m1, d2, d2->focus);
+		} else if (d2_was_active) {
+			activate_node(m1, d2, d2->focus);
+		}
+	} else {
+		if (d1_was_focused) {
+			focus_node(m1, d2, d2->focus);
+		} else if (d1_was_active) {
+			activate_node(m1, d2, d2->focus);
+		}
+
+		if (d2_was_focused) {
+			focus_node(m2, d1, d1->focus);
+		} else if (d2_was_active) {
+			activate_node(m2, d1, d1->focus);
+		}
 	}
 
 	ewmh_update_wm_desktops();

@@ -26,9 +26,11 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <xcb/shape.h>
 #include "bspwm.h"
 #include "ewmh.h"
 #include "monitor.h"
+#include "desktop.h"
 #include "query.h"
 #include "rule.h"
 #include "settings.h"
@@ -61,7 +63,7 @@ void schedule_window(xcb_window_t win)
 		}
 	}
 
-	rule_consequence_t *csq = make_rule_conquence();
+	rule_consequence_t *csq = make_rule_consequence();
 	apply_rules(win, csq);
 	if (!schedule_rules(win, csq)) {
 		manage_window(win, csq, -1);
@@ -69,7 +71,7 @@ void schedule_window(xcb_window_t win)
 	}
 }
 
-void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
+bool manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 {
 	monitor_t *m = mon;
 	desktop_t *d = mon->desk;
@@ -77,7 +79,7 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 
 	parse_rule_consequence(fd, csq);
 
-	if (ewmh_handle_struts(win)) {
+	if (!ignore_ewmh_struts && ewmh_handle_struts(win)) {
 		for (monitor_t *m = mon_head; m != NULL; m = m->next) {
 			arrange(m, m->desk);
 		}
@@ -87,7 +89,7 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 		free(csq->layer);
 		free(csq->state);
 		window_show(win);
-		return;
+		return false;
 	}
 
 	if (csq->node_desc[0] != '\0') {
@@ -158,10 +160,19 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 	snprintf(c->class_name, sizeof(c->class_name), "%s", csq->class_name);
 	snprintf(c->instance_name, sizeof(c->instance_name), "%s", csq->instance_name);
 
+	if ((csq->state != NULL && (*(csq->state) == STATE_FLOATING || *(csq->state) == STATE_FULLSCREEN)) || csq->hidden) {
+		n->vacant = true;
+	}
+
 	f = insert_node(m, d, n, f);
 	clients_count++;
+	if (single_monocle && d->layout == LAYOUT_MONOCLE && tiled_count(d->root, true) > 1) {
+		set_layout(m, d, d->user_layout, false);
+	}
 
-	put_status(SBSC_MASK_NODE_MANAGE, "node_manage 0x%08X 0x%08X 0x%08X 0x%08X\n", m->id, d->id, win, f!=NULL?f->id:0);
+	n->vacant = false;
+
+	put_status(SBSC_MASK_NODE_ADD, "node_add 0x%08X 0x%08X 0x%08X 0x%08X\n", m->id, d->id, f!=NULL?f->id:0, win);
 
 	if (f != NULL && f->client != NULL && csq->state != NULL && *(csq->state) == STATE_FLOATING) {
 		c->layer = f->client->layer;
@@ -179,6 +190,7 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 	set_sticky(m, d, n, csq->sticky);
 	set_private(m, d, n, csq->private);
 	set_locked(m, d, n, csq->locked);
+	set_marked(m, d, n, csq->marked);
 
 	arrange(m, d);
 
@@ -193,6 +205,9 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 		hide_node(d, n);
 	}
 
+	ewmh_update_client_list(false);
+	ewmh_set_wm_desktop(n, d);
+
 	if (!csq->hidden && csq->focus) {
 		if (d == mon->desk || csq->follow) {
 			focus_node(m, d, n);
@@ -204,10 +219,10 @@ void manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 		draw_border(n, false, (m == mon));
 	}
 
-	ewmh_set_wm_desktop(n, d);
-	ewmh_update_client_list(false);
 	free(csq->layer);
 	free(csq->state);
+
+	return true;
 }
 
 void set_window_state(xcb_window_t win, xcb_icccm_wm_state_t state)
@@ -220,9 +235,8 @@ void unmanage_window(xcb_window_t win)
 {
 	coordinates_t loc;
 	if (locate_window(win, &loc)) {
-		put_status(SBSC_MASK_NODE_UNMANAGE, "node_unmanage 0x%08X 0x%08X 0x%08X\n", loc.monitor->id, loc.desktop->id, win);
+		put_status(SBSC_MASK_NODE_REMOVE, "node_remove 0x%08X 0x%08X 0x%08X\n", loc.monitor->id, loc.desktop->id, win);
 		remove_node(loc.monitor, loc.desktop, loc.node);
-		set_window_state(win, XCB_ICCCM_WM_STATE_WITHDRAWN);
 		arrange(loc.monitor, loc.desktop);
 	} else {
 		for (pending_rule_t *pr = pending_rule_head; pr != NULL; pr = pr->next) {
@@ -254,13 +268,14 @@ void initialize_presel_feedback(node_t *n)
 	}
 
 	xcb_window_t win = xcb_generate_id(dpy);
-	uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_SAVE_UNDER | XCB_CW_EVENT_MASK;
-	uint32_t values[] = {get_color_pixel(presel_feedback_color), 1, focus_follows_pointer ? XCB_EVENT_MASK_ENTER_WINDOW : 0};
+	uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_SAVE_UNDER;
+	uint32_t values[] = {get_color_pixel(presel_feedback_color), 1};
 	xcb_create_window(dpy, XCB_COPY_FROM_PARENT, win, root, 0, 0, 1, 1, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
 			          XCB_COPY_FROM_PARENT, mask, values);
 
 	xcb_icccm_set_wm_class(dpy, win, sizeof(PRESEL_FEEDBACK_IC), PRESEL_FEEDBACK_IC);
-	window_grab_buttons(win);
+	/* Make presel window's input shape NULL to pass any input to window below */
+	xcb_shape_rectangles(dpy, XCB_SHAPE_SO_SET, XCB_SHAPE_SK_INPUT, XCB_CLIP_ORDERING_UNSORTED, win, 0, 0, 0, NULL);
 	stacking_list_t *s = stack_tail;
 	while (s != NULL && !IS_TILED(s->node->client)) {
 		s = s->prev;
@@ -273,7 +288,7 @@ void initialize_presel_feedback(node_t *n)
 
 void draw_presel_feedback(monitor_t *m, desktop_t *d, node_t *n)
 {
-	if (n == NULL || n->presel == NULL || d->layout == LAYOUT_MONOCLE) {
+	if (n == NULL || n->presel == NULL || d->layout == LAYOUT_MONOCLE || !presel_feedback) {
 		return;
 	}
 
@@ -282,7 +297,7 @@ void draw_presel_feedback(monitor_t *m, desktop_t *d, node_t *n)
 		initialize_presel_feedback(n);
 	}
 
-	int gap = gapless_monocle && IS_MONOCLE(d) ? 0 : d->window_gap;
+	int gap = gapless_monocle && d->layout == LAYOUT_MONOCLE ? 0 : d->window_gap;
 	presel_t *p = n->presel;
 	xcb_rectangle_t rect = n->rectangle;
 	rect.x = rect.y = 0;
@@ -396,7 +411,7 @@ void draw_border(node_t *n, bool focused_node, bool focused_monitor)
 
 	uint32_t border_color_pxl = get_border_color(focused_node, focused_monitor);
 	for (node_t *f = first_extrema(n); f != NULL; f = next_leaf(f, n)) {
-		if (f->client != NULL && f->client->border_width > 0) {
+		if (f->client != NULL) {
 			window_draw_border(f->id, border_color_pxl);
 		}
 	}
@@ -488,7 +503,7 @@ bool move_client(coordinates_t *loc, int dx, int dy)
 		coordinates_t dst;
 		bool is_managed = (pwin != XCB_NONE && locate_window(pwin, &dst));
 		if (is_managed && dst.monitor == loc->monitor && IS_TILED(dst.node->client)) {
-			swap_nodes(loc->monitor, loc->desktop, n, loc->monitor, loc->desktop, dst.node);
+			swap_nodes(loc->monitor, loc->desktop, n, loc->monitor, loc->desktop, dst.node, false);
 			return true;
 		} else {
 			if (is_managed && dst.monitor == loc->monitor) {
@@ -519,18 +534,14 @@ bool move_client(coordinates_t *loc, int dx, int dy)
 		return true;
 	}
 
-	bool focused = (n == mon->desk->focus);
-	transfer_node(loc->monitor, loc->desktop, n, pm, pm->desk, pm->desk->focus);
+	transfer_node(loc->monitor, loc->desktop, n, pm, pm->desk, pm->desk->focus, true);
 	loc->monitor = pm;
 	loc->desktop = pm->desk;
-	if (focused) {
-		focus_node(pm, pm->desk, n);
-	}
 
 	return true;
 }
 
-bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy)
+bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy, bool relative)
 {
 	node_t *n = loc->node;
 	if (n == NULL || n->client == NULL || n->client->state == STATE_FULLSCREEN) {
@@ -555,21 +566,47 @@ bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy)
 			return false;
 		}
 		if (vertical_fence != NULL) {
-			double sr = vertical_fence->split_ratio + (double) dx / vertical_fence->rectangle.width;
+			double sr = 0.0;
+			if (relative) {
+				sr = vertical_fence->split_ratio + (double) dx / (double) vertical_fence->rectangle.width;
+			} else {
+				sr = (double) (dx - vertical_fence->rectangle.x) / (double) vertical_fence->rectangle.width;
+			}
 			sr = MAX(0, sr);
 			sr = MIN(1, sr);
 			vertical_fence->split_ratio = sr;
 		}
 		if (horizontal_fence != NULL) {
-			double sr = horizontal_fence->split_ratio + (double) dy / horizontal_fence->rectangle.height;
+			double sr = 0.0;
+			if (relative) {
+				sr = horizontal_fence->split_ratio + (double) dy / (double) horizontal_fence->rectangle.height;
+			} else {
+				sr = (double) (dy - horizontal_fence->rectangle.y) / (double) horizontal_fence->rectangle.height;
+			}
 			sr = MAX(0, sr);
 			sr = MIN(1, sr);
 			horizontal_fence->split_ratio = sr;
 		}
+		node_t *target_fence = horizontal_fence != NULL ? horizontal_fence : vertical_fence;
+		adjust_ratios(target_fence, target_fence->rectangle);
 		arrange(loc->monitor, loc->desktop);
 	} else {
-		int w = width + dx * (rh & HANDLE_LEFT ? -1 : (rh & HANDLE_RIGHT ? 1 : 0));
-		int h = height + dy * (rh & HANDLE_TOP ? -1 : (rh & HANDLE_BOTTOM ? 1 : 0));
+		int w = width, h = height;
+		if (relative) {
+			w += dx * (rh & HANDLE_LEFT ? -1 : (rh & HANDLE_RIGHT ? 1 : 0));
+			h += dy * (rh & HANDLE_TOP ? -1 : (rh & HANDLE_BOTTOM ? 1 : 0));
+		} else {
+			if (rh & HANDLE_LEFT) {
+				w = x + width - dx;
+			} else if (rh & HANDLE_RIGHT) {
+				w = dx - x;
+			}
+			if (rh & HANDLE_TOP) {
+				h = y + height - dy;
+			} else if (rh & HANDLE_BOTTOM) {
+				h = dy - y;
+			}
+		}
 		width = MAX(1, w);
 		height = MAX(1, h);
 		apply_size_hints(n->client, &width, &height);
@@ -848,9 +885,11 @@ void window_set_visibility(xcb_window_t win, bool visible)
 	uint32_t values_on[] = {ROOT_EVENT_MASK};
 	xcb_change_window_attributes(dpy, root, XCB_CW_EVENT_MASK, values_off);
 	if (visible) {
+		set_window_state(win, XCB_ICCCM_WM_STATE_NORMAL);
 		xcb_map_window(dpy, win);
 	} else {
 		xcb_unmap_window(dpy, win);
+		set_window_state(win, XCB_ICCCM_WM_STATE_ICONIC);
 	}
 	xcb_change_window_attributes(dpy, root, XCB_CW_EVENT_MASK, values_on);
 }
@@ -928,4 +967,17 @@ void send_client_message(xcb_window_t win, xcb_atom_t property, xcb_atom_t value
 	xcb_send_event(dpy, false, win, XCB_EVENT_MASK_NO_EVENT, (char *) e);
 	xcb_flush(dpy);
 	free(e);
+}
+
+bool window_exists(xcb_window_t win)
+{
+	xcb_generic_error_t *err;
+	free(xcb_query_tree_reply(dpy, xcb_query_tree(dpy, win), &err));
+
+	if (err != NULL) {
+		free(err);
+		return false;
+	}
+
+	return true;
 }

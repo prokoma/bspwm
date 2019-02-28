@@ -119,6 +119,68 @@ char *copy_string(char *str, size_t len)
 	return cpy;
 }
 
+char *mktempfifo(const char *template)
+{
+	int tempfd;
+	char *runtime_dir = getenv(RUNTIME_DIR_ENV);
+	if (runtime_dir == NULL) {
+		runtime_dir = "/tmp";
+	}
+
+	char *fifo_path = malloc(strlen(runtime_dir)+1+strlen(template)+1);
+	if (fifo_path == NULL) {
+		return NULL;
+	}
+
+	sprintf(fifo_path, "%s/%s", runtime_dir, template);
+
+	if ((tempfd = mkstemp(fifo_path)) == -1) {
+		free(fifo_path);
+		return NULL;
+	}
+
+	close(tempfd);
+	unlink(fifo_path);
+
+	if (mkfifo(fifo_path, 0666) == -1) {
+		free(fifo_path);
+		return NULL;
+	}
+
+	return fifo_path;
+}
+
+int asprintf(char **buf, const char *fmt, ...)
+{
+	int size = 0;
+	va_list args;
+	va_start(args, fmt);
+	size = vasprintf(buf, fmt, args);
+	va_end(args);
+	return size;
+}
+
+int vasprintf(char **buf, const char *fmt, va_list args)
+{
+	va_list tmp;
+	va_copy(tmp, args);
+	int size = vsnprintf(NULL, 0, fmt, tmp);
+	va_end(tmp);
+
+	if (size < 0) {
+		return -1;
+	}
+
+	*buf = malloc(size + 1);
+
+	if (*buf == NULL) {
+		return -1;
+	}
+
+	size = vsprintf(*buf, fmt, args);
+	return size;
+}
+
 /* Adapted from i3wm */
 uint32_t get_color_pixel(const char *color)
 {

@@ -36,11 +36,12 @@
 #include "stack.h"
 #include "tree.h"
 #include "settings.h"
+#include "subscribe.h"
 #include "restore.h"
 #include "window.h"
 #include "parse.h"
 
-bool restore_tree(const char *file_path)
+bool restore_state(const char *file_path)
 {
 	size_t jslen;
 	char *json = read_string(file_path, &jslen);
@@ -152,6 +153,10 @@ bool restore_tree(const char *file_path)
 			}
 			restore_stack(&t, json);
 			continue;
+		} else if (keyeq("eventSubscribers", t, json)) {
+			t++;
+			restore_subscribers(&t, json);
+			continue;
 		}
 		t++;
 	}
@@ -179,9 +184,13 @@ bool restore_tree(const char *file_path)
 	}
 
 	for (monitor_t *m = mon_head; m != NULL; m = m->next) {
+		m->id = xcb_generate_id(dpy);
 		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
+			d->id = xcb_generate_id(dpy);
+			regenerate_ids_in(d->root);
 			refresh_presel_feedbacks(m, d, d->root);
 			restack_presel_feedbacks(d);
+
 			for (node_t *n = first_extrema(d->root); n != NULL; n = next_leaf(n, d->root)) {
 				if (n->client == NULL) {
 					continue;
@@ -194,13 +203,13 @@ bool restore_tree(const char *file_path)
 		}
 	}
 
+	ewmh_update_number_of_desktops();
+	ewmh_update_desktop_names();
+	ewmh_update_desktop_viewport();
+	ewmh_update_current_desktop();
 	ewmh_update_client_list(false);
 	ewmh_update_client_list(true);
 	ewmh_update_active_window();
-	ewmh_update_number_of_desktops();
-	ewmh_update_current_desktop();
-	ewmh_update_desktop_names();
-	ewmh_update_desktop_viewport();
 
 	free(tokens);
 	free(json);
@@ -305,6 +314,7 @@ desktop_t *restore_desktop(jsmntok_t **t, char *json)
 			snprintf(d->name, (*t)->end - (*t)->start + 1, "%s", json + (*t)->start);
 		RESTORE_UINT(id, &d->id)
 		RESTORE_ANY(layout, &d->layout, parse_layout)
+		RESTORE_ANY(userLayout, &d->user_layout, parse_layout)
 		RESTORE_INT(windowGap, &d->window_gap)
 		RESTORE_UINT(borderWidth, &d->border_width)
 		} else if (keyeq("focusedNodeId", *t, json)) {
@@ -349,12 +359,12 @@ node_t *restore_node(jsmntok_t **t, char *json)
 				sscanf(json + (*t)->start, "%u", &n->id);
 			RESTORE_ANY(splitType, &n->split_type, parse_split_type)
 			RESTORE_DOUBLE(splitRatio, &n->split_ratio)
-			RESTORE_INT(birthRotation, &n->birth_rotation)
 			RESTORE_BOOL(vacant, &n->vacant)
 			RESTORE_BOOL(hidden, &n->hidden)
 			RESTORE_BOOL(sticky, &n->sticky)
 			RESTORE_BOOL(private, &n->private)
 			RESTORE_BOOL(locked, &n->locked)
+			RESTORE_BOOL(marked, &n->marked)
 			} else if (keyeq("presel", *t, json)) {
 				(*t)++;
 				n->presel = restore_presel(t, json);
@@ -539,8 +549,42 @@ void restore_history(jsmntok_t **t, char *json)
 		coordinates_t loc = {NULL, NULL, NULL};
 		restore_coordinates(&loc, t, json);
 		if (loc.monitor != NULL && loc.desktop != NULL) {
-			history_add(loc.monitor, loc.desktop, loc.node);
+			history_add(loc.monitor, loc.desktop, loc.node, true);
 		}
+	}
+}
+
+void restore_subscribers(jsmntok_t **t, char *json)
+{
+	int s = (*t)->size;
+	(*t)++;
+
+	for (int i = 0; i < s; i++) {
+		subscriber_list_t *s = make_subscriber(NULL, NULL, 0, 0);
+		restore_subscriber(s, t, json);
+		add_subscriber(s);
+	}
+}
+
+void restore_subscriber(subscriber_list_t *s, jsmntok_t **t, char *json)
+{
+	int n = (*t)->size;
+	(*t)++;
+
+	for (int i = 0; i < n; i++) {
+		if (keyeq("fileDescriptor", *t, json)) {
+			(*t)++;
+			int fd;
+			sscanf(json + (*t)->start, "%i", &fd);
+			s->stream = fdopen(fd, "w");
+		} else if (keyeq("fifoPath", *t, json)) {
+			(*t)++;
+			free(s->fifo_path);
+			s->fifo_path = copy_string(json + (*t)->start, (*t)->end - (*t)->start);
+		RESTORE_INT(field, &s->field)
+		RESTORE_INT(count, &s->count)
+		}
+		(*t)++;
 	}
 }
 
