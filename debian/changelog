@@ -1,6 +1,7 @@
 bspwm (0.9.7-1) experimental; urgency=medium
 
   * New upstream release.
+  * Add libxcb-shape0-dev to B-D.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Thu, 02 May 2019 09:50:19 +0900
 
