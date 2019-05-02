@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <limits.h>
 #include "bspwm.h"
 #include "desktop.h"
 #include "ewmh.h"
@@ -45,45 +46,37 @@ void arrange(monitor_t *m, desktop_t *d)
 		return;
 	}
 
-	layout_t l = d->layout;
-
-	if (single_monocle && tiled_count(d->root) <= 1) {
-		l = LAYOUT_MONOCLE;
-	}
-
 	xcb_rectangle_t rect = m->rectangle;
 
-	if (!paddingless_monocle || l != LAYOUT_MONOCLE) {
-		rect.x += m->padding.left + d->padding.left;
-		rect.y += m->padding.top + d->padding.top;
-		rect.width -= m->padding.left + d->padding.left + d->padding.right + m->padding.right;
-		rect.height -= m->padding.top + d->padding.top + d->padding.bottom + m->padding.bottom;
+	rect.x += m->padding.left + d->padding.left;
+	rect.y += m->padding.top + d->padding.top;
+	rect.width -= m->padding.left + d->padding.left + d->padding.right + m->padding.right;
+	rect.height -= m->padding.top + d->padding.top + d->padding.bottom + m->padding.bottom;
+
+	if (d->layout == LAYOUT_MONOCLE) {
+		rect.x += monocle_padding.left;
+		rect.y += monocle_padding.top;
+		rect.width -= monocle_padding.left + monocle_padding.right;
+		rect.height -= monocle_padding.top + monocle_padding.bottom;
 	}
 
-	if (!gapless_monocle || l != LAYOUT_MONOCLE) {
+	if (!gapless_monocle || d->layout != LAYOUT_MONOCLE) {
 		rect.x += d->window_gap;
 		rect.y += d->window_gap;
 		rect.width -= d->window_gap;
 		rect.height -= d->window_gap;
 	}
 
-	apply_layout(m, d, d->root, l, rect, rect);
+	apply_layout(m, d, d->root, rect, rect);
 }
 
-void apply_layout(monitor_t *m, desktop_t *d, node_t *n, layout_t l, xcb_rectangle_t rect, xcb_rectangle_t root_rect)
+void apply_layout(monitor_t *m, desktop_t *d, node_t *n, xcb_rectangle_t rect, xcb_rectangle_t root_rect)
 {
 	if (n == NULL) {
 		return;
 	}
 
 	n->rectangle = rect;
-
-	if (pointer_follows_focus && mon->desk->focus == n) {
-		xcb_rectangle_t r = rect;
-		r.width -= d->window_gap;
-		r.height -= d->window_gap;
-		center_pointer(r);
-	}
 
 	if (n->presel != NULL) {
 		draw_presel_feedback(m, d, n);
@@ -96,7 +89,7 @@ void apply_layout(monitor_t *m, desktop_t *d, node_t *n, layout_t l, xcb_rectang
 		}
 
 		unsigned int bw;
-		if ((borderless_monocle && l == LAYOUT_MONOCLE && IS_TILED(n->client))
+		if ((borderless_monocle && d->layout == LAYOUT_MONOCLE && IS_TILED(n->client))
 		    || n->client->state == STATE_FULLSCREEN) {
 			bw = 0;
 		} else {
@@ -106,23 +99,21 @@ void apply_layout(monitor_t *m, desktop_t *d, node_t *n, layout_t l, xcb_rectang
 		xcb_rectangle_t r;
 		xcb_rectangle_t cr = get_window_rectangle(n);
 		client_state_t s = n->client->state;
+		/* tiled and pseudo-tiled clients */
 		if (s == STATE_TILED || s == STATE_PSEUDO_TILED) {
-			int wg = (gapless_monocle && l == LAYOUT_MONOCLE ? 0 : d->window_gap);
-			/* tiled clients */
-			if (s == STATE_TILED) {
-				r = rect;
-				int bleed = wg + 2 * bw;
-				r.width = (bleed < r.width ? r.width - bleed : 1);
-				r.height = (bleed < r.height ? r.height - bleed : 1);
+			int wg = (gapless_monocle && d->layout == LAYOUT_MONOCLE ? 0 : d->window_gap);
+			r = rect;
+			int bleed = wg + 2 * bw;
+			r.width = (bleed < r.width ? r.width - bleed : 1);
+			r.height = (bleed < r.height ? r.height - bleed : 1);
 			/* pseudo-tiled clients */
-			} else {
-				r = n->client->floating_rectangle;
+			if (s == STATE_PSEUDO_TILED) {
+				xcb_rectangle_t f = n->client->floating_rectangle;
+				r.width = MIN(r.width, f.width);
+				r.height = MIN(r.height, f.height);
 				if (center_pseudo_tiled) {
 					r.x = rect.x - bw + (rect.width - wg - r.width) / 2;
 					r.y = rect.y - bw + (rect.height - wg - r.height) / 2;
-				} else {
-					r.x = rect.x;
-					r.y = rect.y;
 				}
 			}
 			n->client->tiled_rectangle = r;
@@ -150,7 +141,7 @@ void apply_layout(monitor_t *m, desktop_t *d, node_t *n, layout_t l, xcb_rectang
 		xcb_rectangle_t first_rect;
 		xcb_rectangle_t second_rect;
 
-		if (l == LAYOUT_MONOCLE || n->first_child->vacant || n->second_child->vacant) {
+		if (d->layout == LAYOUT_MONOCLE || n->first_child->vacant || n->second_child->vacant) {
 			first_rect = second_rect = rect;
 		} else {
 			unsigned int fence;
@@ -183,8 +174,8 @@ void apply_layout(monitor_t *m, desktop_t *d, node_t *n, layout_t l, xcb_rectang
 			}
 		}
 
-		apply_layout(m, d, n->first_child, l, first_rect, root_rect);
-		apply_layout(m, d, n->second_child, l, second_rect, root_rect);
+		apply_layout(m, d, n->first_child, first_rect, root_rect);
+		apply_layout(m, d, n->second_child, second_rect, root_rect);
 	}
 }
 
@@ -328,14 +319,21 @@ node_t *insert_node(monitor_t *m, desktop_t *d, node_t *n, node_t *f)
 				presel_dir(m, d, f, (rect.width >= rect.height ? DIR_EAST : DIR_SOUTH));
 			}
 		}
-		while (f->presel == NULL && p != NULL && (f->vacant || brother_tree(f)->vacant)) {
-			f = p;
-			p = f->parent;
-		}
 		n->parent = c;
-		c->birth_rotation = f->birth_rotation;
 		if (f->presel == NULL) {
-			if (p == NULL) {
+			bool single_tiled = f->client != NULL && IS_TILED(f->client) && tiled_count(d->root, true) == 1;
+			if (p == NULL || automatic_scheme != SCHEME_SPIRAL || single_tiled) {
+				if (p != NULL) {
+					if (is_first_child(f)) {
+						p->first_child = c;
+					} else {
+						p->second_child = c;
+					}
+				} else {
+					d->root = c;
+				}
+				c->parent = p;
+				f->parent = c;
 				if (initial_polarity == FIRST_CHILD) {
 					c->first_child = n;
 					c->second_child = f;
@@ -343,13 +341,26 @@ node_t *insert_node(monitor_t *m, desktop_t *d, node_t *n, node_t *f)
 					c->first_child = f;
 					c->second_child = n;
 				}
-				if (m->rectangle.width > m->rectangle.height) {
-					c->split_type = TYPE_VERTICAL;
+				if (p == NULL || automatic_scheme == SCHEME_LONGEST_SIDE || single_tiled) {
+					if (f->rectangle.width > f->rectangle.height) {
+						c->split_type = TYPE_VERTICAL;
+					} else {
+						c->split_type = TYPE_HORIZONTAL;
+					}
 				} else {
-					c->split_type = TYPE_HORIZONTAL;
+					node_t *q = p;
+					while (q != NULL && (q->first_child->vacant || q->second_child->vacant)) {
+						q = q->parent;
+					}
+					if (q == NULL) {
+						q = p;
+					}
+					if (q->split_type == TYPE_HORIZONTAL) {
+						c->split_type = TYPE_VERTICAL;
+					} else {
+						c->split_type = TYPE_HORIZONTAL;
+					}
 				}
-				f->parent = c;
-				d->root = c;
 			} else {
 				node_t *g = p->parent;
 				c->parent = g;
@@ -375,7 +386,6 @@ node_t *insert_node(monitor_t *m, desktop_t *d, node_t *n, node_t *f)
 					c->second_child = n;
 					rot = 270;
 				}
-				n->birth_rotation = rot;
 				if (!n->vacant) {
 					rotate_tree(p, rot);
 				}
@@ -391,7 +401,6 @@ node_t *insert_node(monitor_t *m, desktop_t *d, node_t *n, node_t *f)
 			c->split_ratio = f->presel->split_ratio;
 			c->parent = p;
 			f->parent = c;
-			f->birth_rotation = 0;
 			switch (f->presel->split_dir) {
 				case DIR_WEST:
 					c->split_type = TYPE_VERTICAL;
@@ -435,12 +444,19 @@ void insert_receptacle(monitor_t *m, desktop_t *d, node_t *n)
 {
 	node_t *r = make_node(XCB_NONE);
 	insert_node(m, d, r, n);
+
+	if (single_monocle && d->layout == LAYOUT_MONOCLE && tiled_count(d->root, true) > 1) {
+		set_layout(m, d, d->user_layout, false);
+	}
 }
 
 bool activate_node(monitor_t *m, desktop_t *d, node_t *n)
 {
 	if (n == NULL && d->root != NULL) {
-		n = history_last_node(d, NULL);
+		n = d->focus;
+		if (n == NULL) {
+			n = history_last_node(d, NULL);
+		}
 		if (n == NULL) {
 			n = first_focusable_leaf(d->root);
 		}
@@ -466,7 +482,7 @@ bool activate_node(monitor_t *m, desktop_t *d, node_t *n)
 	}
 
 	d->focus = n;
-	history_add(m, d, n);
+	history_add(m, d, n, false);
 
 	put_status(SBSC_MASK_REPORT);
 
@@ -479,28 +495,31 @@ bool activate_node(monitor_t *m, desktop_t *d, node_t *n)
 	return true;
 }
 
-void transfer_sticky_nodes(monitor_t *m, desktop_t *ds, desktop_t *dd, node_t *n)
+void transfer_sticky_nodes(monitor_t *ms, desktop_t *ds, monitor_t *md, desktop_t *dd, node_t *n)
 {
 	if (n == NULL) {
 		return;
 	} else if (n->sticky) {
 		sticky_still = false;
-		transfer_node(m, ds, n, m, dd, dd->focus, false);
+		transfer_node(ms, ds, n, md, dd, dd->focus, false);
 		sticky_still = true;
 	} else {
 		/* we need references to the children because n might be freed after
 		 * the first recursive call */
 		node_t *first_child = n->first_child;
 		node_t *second_child = n->second_child;
-		transfer_sticky_nodes(m, ds, dd, first_child);
-		transfer_sticky_nodes(m, ds, dd, second_child);
+		transfer_sticky_nodes(ms, ds, md, dd, first_child);
+		transfer_sticky_nodes(ms, ds, md, dd, second_child);
 	}
 }
 
 bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 {
 	if (m == NULL) {
-		m = history_last_monitor(NULL);
+		m = mon;
+		if (m == NULL) {
+			m = history_last_monitor(NULL);
+		}
 		if (m == NULL) {
 			m = mon_head;
 		}
@@ -511,7 +530,10 @@ bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 	}
 
 	if (d == NULL) {
-		d = history_last_desktop(m, NULL);
+		d = m->desk;
+		if (d == NULL) {
+			d = history_last_desktop(m, NULL);
+		}
 		if (d == NULL) {
 			d = m->desk_head;
 		}
@@ -524,7 +546,10 @@ bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 	bool guess = (n == NULL);
 
 	if (n == NULL && d->root != NULL) {
-		n = history_last_node(d, NULL);
+		n = d->focus;
+		if (n == NULL) {
+			n = history_last_node(d, NULL);
+		}
 		if (n == NULL) {
 			n = first_focusable_leaf(d->root);
 		}
@@ -538,12 +563,12 @@ bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 		clear_input_focus();
 	}
 
-	if (m->sticky_count > 0 && d != m->desk) {
+	if (m->sticky_count > 0 && m->desk != NULL && d != m->desk) {
 		if (guess && m->desk->focus != NULL && m->desk->focus->sticky) {
 			n = m->desk->focus;
 		}
 
-		transfer_sticky_nodes(m, m->desk, d, m->desk->root);
+		transfer_sticky_nodes(m, m->desk, m, d, m->desk->root);
 
 		if (n == NULL && d->focus != NULL) {
 			n = d->focus;
@@ -586,7 +611,7 @@ bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 
 	d->focus = n;
 	ewmh_update_active_window();
-	history_add(m, d, n);
+	history_add(m, d, n, true);
 
 	put_status(SBSC_MASK_REPORT);
 
@@ -613,7 +638,7 @@ bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 
 void hide_node(desktop_t *d, node_t *n)
 {
-	if (n == NULL) {
+	if (n == NULL || (!hide_sticky && n->sticky)) {
 		return;
 	} else {
 		if (!n->hidden) {
@@ -664,7 +689,6 @@ node_t *make_node(uint32_t id)
 	n->vacant = n->hidden = n->sticky = n->private = n->locked = n->marked = false;
 	n->split_ratio = split_ratio;
 	n->split_type = TYPE_VERTICAL;
-	n->birth_rotation = 0;
 	n->constraints = (constraints_t) {MIN_WIDTH, MIN_HEIGHT};
 	n->presel = NULL;
 	n->client = NULL;
@@ -1028,23 +1052,29 @@ unsigned int node_area(desktop_t *d, node_t *n)
 	return area(get_rectangle(NULL, d, n));
 }
 
-int tiled_count(node_t *n)
+int tiled_count(node_t *n, bool include_receptacles)
 {
 	if (n == NULL) {
 		return 0;
 	}
 	int cnt = 0;
 	for (node_t *f = first_extrema(n); f != NULL; f = next_leaf(f, n)) {
-		if (!f->hidden && f->client != NULL && IS_TILED(f->client)) {
+		if (!f->hidden && ((include_receptacles && f->client == NULL) ||
+		                   (f->client != NULL && IS_TILED(f->client)))) {
 			cnt++;
 		}
 	}
 	return cnt;
 }
 
-void find_biggest(coordinates_t *ref, coordinates_t *dst, node_select_t *sel)
+void find_by_area(area_peak_t ap, coordinates_t *ref, coordinates_t *dst, node_select_t *sel)
 {
-	unsigned int b_area = 0;
+	unsigned int p_area;
+	if (ap == AREA_BIGGEST) {
+		p_area = 0;
+	} else {
+		p_area = UINT_MAX;
+	}
 
 	for (monitor_t *m = mon_head; m != NULL; m = m->next) {
 		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
@@ -1054,9 +1084,9 @@ void find_biggest(coordinates_t *ref, coordinates_t *dst, node_select_t *sel)
 					continue;
 				}
 				unsigned int f_area = node_area(d, f);
-				if (f_area > b_area) {
+				if ((ap == AREA_BIGGEST && f_area > p_area) || (ap == AREA_SMALLEST && f_area < p_area)) {
 					*dst = loc;
-					b_area = f_area;
+					p_area = f_area;
 				}
 			}
 		}
@@ -1096,24 +1126,6 @@ void rotate_tree_rec(node_t *n, int deg)
 
 	rotate_tree_rec(n->first_child, deg);
 	rotate_tree_rec(n->second_child, deg);
-}
-
-void rotate_brother(node_t *n)
-{
-	rotate_tree(brother_tree(n), n->birth_rotation);
-}
-
-void unrotate_tree(node_t *n, int rot)
-{
-	if (rot == 0) {
-		return;
-	}
-	rotate_tree(n, 360 - rot);
-}
-
-void unrotate_brother(node_t *n)
-{
-	unrotate_tree(brother_tree(n), n->birth_rotation);
 }
 
 void flip_tree(node_t *n, flip_t flp)
@@ -1164,6 +1176,46 @@ int balance_tree(node_t *n)
 	}
 }
 
+/* Adjust the split ratios so that they keep their position
+ * despite the potential alteration of their rectangle. */
+void adjust_ratios(node_t *n, xcb_rectangle_t rect)
+{
+	if (n == NULL) {
+		return;
+	}
+
+	double ratio;
+
+	if (n->split_type == TYPE_VERTICAL) {
+		double position = (double) n->rectangle.x + n->split_ratio * (double) n->rectangle.width;
+		ratio = (position - (double) rect.x) / (double) rect.width;
+	} else {
+		double position = (double) n->rectangle.y + n->split_ratio * (double) n->rectangle.height;
+		ratio = (position - (double) rect.y) / (double) rect.height;
+	}
+
+	ratio = MAX(0.0, ratio);
+	ratio = MIN(1.0, ratio);
+	n->split_ratio = ratio;
+
+	xcb_rectangle_t first_rect;
+	xcb_rectangle_t second_rect;
+	unsigned int fence;
+
+	if (n->split_type == TYPE_VERTICAL) {
+		fence = rect.width * n->split_ratio;
+		first_rect = (xcb_rectangle_t) {rect.x, rect.y, fence, rect.height};
+		second_rect = (xcb_rectangle_t) {rect.x + fence, rect.y, rect.width - fence, rect.height};
+	} else {
+		fence = rect.height * n->split_ratio;
+		first_rect = (xcb_rectangle_t) {rect.x, rect.y, rect.width, fence};
+		second_rect = (xcb_rectangle_t) {rect.x, rect.y + fence, rect.width, rect.height - fence};
+	}
+
+	adjust_ratios(n->first_child, first_rect);
+	adjust_ratios(n->second_child, second_rect);
+}
+
 void unlink_node(monitor_t *m, desktop_t *d, node_t *n)
 {
 	if (d == NULL || n == NULL) {
@@ -1189,10 +1241,6 @@ void unlink_node(monitor_t *m, desktop_t *d, node_t *n)
 		node_t *b = brother_tree(n);
 		node_t *g = p->parent;
 
-		if (!n->vacant) {
-			unrotate_tree(b, n->birth_rotation);
-		}
-
 		b->parent = g;
 
 		if (g != NULL) {
@@ -1205,7 +1253,23 @@ void unlink_node(monitor_t *m, desktop_t *d, node_t *n)
 			d->root = b;
 		}
 
-		b->birth_rotation = p->birth_rotation;
+		if (!n->vacant && removal_adjustment) {
+			if (automatic_scheme == SCHEME_LONGEST_SIDE || g == NULL) {
+				if (p != NULL) {
+					if (p->rectangle.width > p->rectangle.height) {
+						b->split_type = TYPE_VERTICAL;
+					} else {
+						b->split_type = TYPE_HORIZONTAL;
+					}
+				}
+			} else if (automatic_scheme == SCHEME_ALTERNATE) {
+				if (g->split_type == TYPE_HORIZONTAL) {
+					b->split_type = TYPE_VERTICAL;
+				} else {
+					b->split_type = TYPE_HORIZONTAL;
+				}
+			}
+		}
 
 		free(p);
 		n->parent = NULL;
@@ -1264,6 +1328,10 @@ void remove_node(monitor_t *m, desktop_t *d, node_t *n)
 	}
 	free_node(n);
 
+	if (single_monocle && d->layout != LAYOUT_MONOCLE && tiled_count(d->root, true) <= 1) {
+		set_layout(m, d, LAYOUT_MONOCLE, false);
+	}
+
 	ewmh_update_client_list(false);
 	ewmh_update_client_list(true);
 
@@ -1303,8 +1371,6 @@ bool swap_nodes(monitor_t *m1, desktop_t *d1, node_t *n1, monitor_t *m2, desktop
 	node_t *pn2 = n2->parent;
 	bool n1_first_child = is_first_child(n1);
 	bool n2_first_child = is_first_child(n2);
-	int br1 = n1->birth_rotation;
-	int br2 = n2->birth_rotation;
 	bool n1_held_focus = is_descendant(d1->focus, n1);
 	bool n2_held_focus = is_descendant(d2->focus, n2);
 	node_t *last_d1_focus = d1->focus;
@@ -1328,8 +1394,6 @@ bool swap_nodes(monitor_t *m1, desktop_t *d1, node_t *n1, monitor_t *m2, desktop
 
 	n1->parent = pn2;
 	n2->parent = pn1;
-	n1->birth_rotation = br2;
-	n2->birth_rotation = br1;
 
 	propagate_flags_upward(m2, d2, n1);
 	propagate_flags_upward(m1, d1, n2);
@@ -1375,6 +1439,13 @@ bool swap_nodes(monitor_t *m1, desktop_t *d1, node_t *n1, monitor_t *m2, desktop
 				hide_node(d1, n1);
 			}
 			show_node(d1, n2);
+		}
+
+		if (single_monocle) {
+			layout_t l1 = tiled_count(d1->root, true) <= 1 ? LAYOUT_MONOCLE : d1->user_layout;
+			layout_t l2 = tiled_count(d2->root, true) <= 1 ? LAYOUT_MONOCLE : d2->user_layout;
+			set_layout(m1, d1, l1, false);
+			set_layout(m2, d2, l2, false);
 		}
 
 		if (n1_held_focus) {
@@ -1446,11 +1517,6 @@ bool transfer_node(monitor_t *ms, desktop_t *ds, node_t *ns, monitor_t *md, desk
 		if (ns->client == NULL || monitor_from_client(ns->client) != md) {
 			adapt_geometry(&ms->rectangle, &md->rectangle, ns);
 		}
-
-		if (ms->sticky_count > 0 && sticky_count(ns) > 0) {
-			ms->sticky_count -= sticky_count(ns);
-			md->sticky_count += sticky_count(ns);
-		}
 	}
 
 	if (ds != dd) {
@@ -1478,6 +1544,14 @@ bool transfer_node(monitor_t *ms, desktop_t *ds, node_t *ns, monitor_t *md, desk
 			draw_border(ns, is_descendant(ns, ds->focus), (ms == mon));
 		}
 	} else {
+		if (single_monocle) {
+			if (ds->layout != LAYOUT_MONOCLE && tiled_count(ds->root, true) <= 1) {
+				set_layout(ms, ds, LAYOUT_MONOCLE, false);
+			}
+			if (dd->layout == LAYOUT_MONOCLE && tiled_count(dd->root, true) > 1) {
+				set_layout(md, dd, dd->user_layout, false);
+			}
+		}
 		if (held_focus) {
 			if (follow) {
 				if (ds_was_focused) {
@@ -1553,7 +1627,7 @@ bool find_closest_node(coordinates_t *ref, coordinates_t *dst, cycle_dir_t dir, 
 
 void circulate_leaves(monitor_t *m, desktop_t *d, node_t *n, circulate_dir_t dir)
 {
-	if (tiled_count(n) < 2) {
+	if (tiled_count(n, false) < 2) {
 		return;
 	}
 	node_t *p = d->focus->parent;
@@ -1606,10 +1680,7 @@ void set_vacant_local(monitor_t *m, desktop_t *d, node_t *n, bool value)
 	n->vacant = value;
 
 	if (value) {
-		unrotate_brother(n);
 		cancel_presel(m, d, n);
-	} else {
-		rotate_brother(n);
 	}
 }
 
@@ -1680,6 +1751,8 @@ bool set_state(monitor_t *m, desktop_t *d, node_t *n, client_state_t s)
 
 	client_t *c = n->client;
 
+	bool was_tiled = IS_TILED(c);
+
 	c->last_state = c->state;
 	c->state = s;
 
@@ -1715,6 +1788,14 @@ bool set_state(monitor_t *m, desktop_t *d, node_t *n, client_state_t s)
 		put_status(SBSC_MASK_REPORT);
 	}
 
+	if (single_monocle && was_tiled != IS_TILED(c)) {
+		if (was_tiled && d->layout != LAYOUT_MONOCLE && tiled_count(d->root, true) <= 1) {
+			set_layout(m, d, LAYOUT_MONOCLE, false);
+		} else if (!was_tiled && d->layout == LAYOUT_MONOCLE && tiled_count(d->root, true) > 1) {
+			set_layout(m, d, d->user_layout, false);
+		}
+	}
+
 	return true;
 }
 
@@ -1747,11 +1828,8 @@ void set_fullscreen(monitor_t *m, desktop_t *d, node_t *n, bool value)
 
 	if (value) {
 		c->wm_flags |= WM_FLAG_FULLSCREEN;
-		c->last_layer = c->layer;
-		c->layer = LAYER_ABOVE;
 	} else {
 		c->wm_flags &= ~WM_FLAG_FULLSCREEN;
-		c->layer = c->last_layer;
 		if (d->focus == n) {
 			neutralize_occluding_windows(m, d, n);
 		}
@@ -1999,13 +2077,6 @@ void set_urgent(monitor_t *m, desktop_t *d, node_t *n, bool value)
 	put_status(SBSC_MASK_REPORT);
 }
 
-/* Returns true if a contains b */
-bool contains(xcb_rectangle_t a, xcb_rectangle_t b)
-{
-	return (a.x <= b.x && (a.x + a.width) >= (b.x + b.width) &&
-	        a.y <= b.y && (a.y + a.height) >= (b.y + b.height));
-}
-
 xcb_rectangle_t get_rectangle(monitor_t *m, desktop_t *d, node_t *n)
 {
 	if (n == NULL) {
@@ -2019,7 +2090,7 @@ xcb_rectangle_t get_rectangle(monitor_t *m, desktop_t *d, node_t *n)
 			return c->tiled_rectangle;
 		}
 	} else {
-		int wg = (d == NULL ? 0 : (gapless_monocle && IS_MONOCLE(d) ? 0 : d->window_gap));
+		int wg = (d == NULL ? 0 : (gapless_monocle && d->layout == LAYOUT_MONOCLE ? 0 : d->window_gap));
 		xcb_rectangle_t rect = n->rectangle;
 		rect.width -= wg;
 		rect.height -= wg;

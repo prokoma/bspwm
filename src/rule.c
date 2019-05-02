@@ -85,7 +85,7 @@ void remove_rule_by_cause(char *cause)
 	char *instance_name = strtok(NULL, COL_TOK);
 	while (r != NULL) {
 		rule_t *next = r->next;
-		if ((streq(class_name, MATCH_ANY) || streq(r->class_name, class_name)) &&
+		if ((class_name != NULL && (streq(class_name, MATCH_ANY) || streq(r->class_name, class_name))) &&
 		    (instance_name == NULL || streq(instance_name, MATCH_ANY) || streq(r->instance_name, instance_name))) {
 			remove_rule(r);
 		}
@@ -104,7 +104,7 @@ bool remove_rule_by_index(int idx)
 	return false;
 }
 
-rule_consequence_t *make_rule_conquence(void)
+rule_consequence_t *make_rule_consequence(void)
 {
 	rule_consequence_t *rc = calloc(1, sizeof(rule_consequence_t));
 	rc->manage = rc->focus = rc->border = true;
@@ -118,6 +118,7 @@ pending_rule_t *make_pending_rule(int fd, xcb_window_t win, rule_consequence_t *
 {
 	pending_rule_t *pr = calloc(1, sizeof(pending_rule_t));
 	pr->prev = pr->next = NULL;
+	pr->event_head = pr->event_tail = NULL;
 	pr->fd = fd;
 	pr->win = win;
 	pr->csq = csq;
@@ -159,8 +160,35 @@ void remove_pending_rule(pending_rule_t *pr)
 	}
 	close(pr->fd);
 	free(pr->csq);
+	event_queue_t *eq = pr->event_head;
+	while (eq != NULL) {
+		event_queue_t *next = eq->next;
+		free(eq);
+		eq = next;
+	}
 	free(pr);
 }
+
+void postpone_event(pending_rule_t *pr, xcb_generic_event_t *evt)
+{
+	event_queue_t *eq = make_event_queue(evt);
+	if (pr->event_tail == NULL) {
+		pr->event_head = pr->event_tail = eq;
+	} else {
+		pr->event_tail->next = eq;
+		eq->prev = pr->event_tail;
+		pr->event_tail = eq;
+	}
+}
+
+event_queue_t *make_event_queue(xcb_generic_event_t *evt)
+{
+	event_queue_t *eq = calloc(1, sizeof(event_queue_t));
+	eq->prev = eq->next = NULL;
+	eq->event = *evt;
+	return eq;
+}
+
 
 #define SET_CSQ_STATE(val) \
 	do { \
@@ -178,7 +206,7 @@ void remove_pending_rule(pending_rule_t *pr)
 		*(csq->layer) = (val); \
 	} while (0)
 
-static void _apply_window_type(xcb_window_t win, rule_consequence_t *csq)
+void _apply_window_type(xcb_window_t win, rule_consequence_t *csq)
 {
 	xcb_ewmh_get_atoms_reply_t win_type;
 	if (xcb_ewmh_get_wm_window_type_reply(ewmh, xcb_ewmh_get_wm_window_type(ewmh, win), &win_type, NULL) == 1) {
@@ -203,7 +231,7 @@ static void _apply_window_type(xcb_window_t win, rule_consequence_t *csq)
 	}
 }
 
-static void _apply_window_state(xcb_window_t win, rule_consequence_t *csq)
+void _apply_window_state(xcb_window_t win, rule_consequence_t *csq)
 {
 	xcb_ewmh_get_atoms_reply_t win_state;
 	if (xcb_ewmh_get_wm_state_reply(ewmh, xcb_ewmh_get_wm_state(ewmh, win), &win_state, NULL) == 1) {
@@ -223,7 +251,7 @@ static void _apply_window_state(xcb_window_t win, rule_consequence_t *csq)
 	}
 }
 
-static void _apply_transient(xcb_window_t win, rule_consequence_t *csq)
+void _apply_transient(xcb_window_t win, rule_consequence_t *csq)
 {
 	xcb_window_t transient_for = XCB_NONE;
 	xcb_icccm_get_wm_transient_for_reply(dpy, xcb_icccm_get_wm_transient_for(dpy, win), &transient_for, NULL);
@@ -232,7 +260,7 @@ static void _apply_transient(xcb_window_t win, rule_consequence_t *csq)
 	}
 }
 
-static void _apply_hints(xcb_window_t win, rule_consequence_t *csq)
+void _apply_hints(xcb_window_t win, rule_consequence_t *csq)
 {
 	xcb_size_hints_t size_hints;
 	if (xcb_icccm_get_wm_normal_hints_reply(dpy, xcb_icccm_get_wm_normal_hints(dpy, win), &size_hints, NULL) == 1) {
@@ -243,7 +271,7 @@ static void _apply_hints(xcb_window_t win, rule_consequence_t *csq)
 	}
 }
 
-static void _apply_class(xcb_window_t win, rule_consequence_t *csq)
+void _apply_class(xcb_window_t win, rule_consequence_t *csq)
 {
 	xcb_icccm_get_wm_class_reply_t reply;
 	if (xcb_icccm_get_wm_class_reply(dpy, xcb_icccm_get_wm_class(dpy, win), &reply, NULL) == 1) {

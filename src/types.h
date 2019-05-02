@@ -45,6 +45,12 @@ typedef enum {
 } split_mode_t;
 
 typedef enum {
+	SCHEME_LONGEST_SIDE,
+	SCHEME_ALTERNATE,
+	SCHEME_SPIRAL
+} automatic_scheme_t;
+
+typedef enum {
 	STATE_TILED,
 	STATE_PSEUDO_TILED,
 	STATE_FLOATING,
@@ -145,6 +151,11 @@ typedef enum {
 } tightness_t;
 
 typedef enum {
+	AREA_BIGGEST,
+	AREA_SMALLEST,
+} area_peak_t;
+
+typedef enum {
 	STATE_TRANSITION_ENTER = 1 << 0,
 	STATE_TRANSITION_EXIT = 1 << 1,
 } state_transition_t;
@@ -152,8 +163,8 @@ typedef enum {
 typedef struct {
 	option_bool_t automatic;
 	option_bool_t focused;
-	option_bool_t local;
 	option_bool_t active;
+	option_bool_t local;
 	option_bool_t leaf;
 	option_bool_t window;
 	option_bool_t tiled;
@@ -177,6 +188,7 @@ typedef struct {
 typedef struct {
 	option_bool_t occupied;
 	option_bool_t focused;
+	option_bool_t active;
 	option_bool_t urgent;
 	option_bool_t local;
 } desktop_select_t;
@@ -228,7 +240,6 @@ struct node_t {
 	uint32_t id;
 	split_type_t split_type;
 	double split_ratio;
-	int birth_rotation;
 	presel_t *presel;
 	xcb_rectangle_t rectangle;
 	constraints_t constraints;
@@ -257,6 +268,7 @@ struct desktop_t {
 	char name[SMALEN];
 	uint32_t id;
 	layout_t layout;
+	layout_t user_layout;
 	node_t *root;
 	node_t *focus;
 	desktop_t *prev;
@@ -306,9 +318,15 @@ struct stacking_list_t {
 	stacking_list_t *next;
 };
 
+typedef struct event_queue_t event_queue_t;
+struct event_queue_t {
+	xcb_generic_event_t event;
+	event_queue_t *prev;
+	event_queue_t *next;
+};
+
 typedef struct subscriber_list_t subscriber_list_t;
 struct subscriber_list_t {
-	int fd;
 	FILE *stream;
 	char* fifo_path;
 	int field;
@@ -355,6 +373,8 @@ struct pending_rule_t {
 	int fd;
 	xcb_window_t win;
 	rule_consequence_t *csq;
+	event_queue_t *event_head;
+	event_queue_t *event_tail;
 	pending_rule_t *prev;
 	pending_rule_t *next;
 };

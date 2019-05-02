@@ -267,6 +267,21 @@ bool parse_child_polarity(char *s, child_polarity_t *p)
 	return false;
 }
 
+bool parse_automatic_scheme(char *s, automatic_scheme_t *a)
+{
+	if (streq("longest_side", s)) {
+		*a = SCHEME_LONGEST_SIDE;
+		return true;
+	} else if (streq("alternate", s)) {
+		*a = SCHEME_ALTERNATE;
+		return true;
+	} else if (streq("spiral", s)) {
+		*a = SCHEME_SPIRAL;
+		return true;
+	}
+	return false;
+}
+
 bool parse_state_transition(char *s, state_transition_t *m)
 {
 	if (streq("none", s)) {
@@ -485,6 +500,7 @@ bool parse_desktop_modifiers(char *desc, desktop_select_t *sel)
 		} else if (streq("!occupied", tok)) {
 			sel->occupied = OPTION_FALSE;
 		GET_MOD(focused)
+		GET_MOD(active)
 		GET_MOD(urgent)
 		GET_MOD(local)
 		} else {
@@ -507,8 +523,8 @@ bool parse_node_modifiers(char *desc, node_select_t *sel)
 			sel->tiled = OPTION_FALSE;
 		GET_MOD(automatic)
 		GET_MOD(focused)
-		GET_MOD(local)
 		GET_MOD(active)
+		GET_MOD(local)
 		GET_MOD(leaf)
 		GET_MOD(window)
 		GET_MOD(pseudo_tiled)
