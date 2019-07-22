@@ -2,7 +2,8 @@ bspwm (0.9.7-2) unstable; urgency=medium
 
   * Upload to unstable.
   * Update d/control.
-    Add libxcb-shape0-dev to B-D.
+    - Add libxcb-shape0-dev to B-D.
+    - Update Vcs-Git and Vcs-Browser to salsa.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 23 Jul 2019 05:17:08 +0900
 
