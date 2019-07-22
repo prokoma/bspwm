@@ -4,6 +4,7 @@ bspwm (0.9.7-2) unstable; urgency=medium
   * Update d/control.
     - Add libxcb-shape0-dev to B-D.
     - Update Vcs-Git and Vcs-Browser to salsa.
+    - Get rid of lintian 'priority-extra-is-replaced-by-priority-optional'.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 23 Jul 2019 05:17:08 +0900
 

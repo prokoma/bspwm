@@ -1,7 +1,7 @@
 Source: bspwm
 Maintainer: Nobuhiro Iwamatsu <iwamatsu@debian.org>
 Uploaders: Raphael Mota Ramos <raphaelmota.ti@gmail.com>
-Priority: extra
+Priority: optional
 Section: x11
 Build-Depends: debhelper (>= 9),
 	libxcb-util0-dev, libxcb-ewmh-dev, libxcb-randr0-dev,
