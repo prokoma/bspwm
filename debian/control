@@ -5,7 +5,8 @@ Priority: extra
 Section: x11
 Build-Depends: debhelper (>= 9),
 	libxcb-util0-dev, libxcb-ewmh-dev, libxcb-randr0-dev,
-	libxcb-icccm4-dev, libxcb-keysyms1-dev, libxcb-xinerama0-dev
+	libxcb-icccm4-dev, libxcb-keysyms1-dev, libxcb-xinerama0-dev,
+	libxcb-shape0-dev
 Standards-Version: 4.0.0
 Homepage: https://github.com/baskerville/bspwm
 Vcs-Git: https://anonscm.debian.org/git/collab-maint/bspwm.git
