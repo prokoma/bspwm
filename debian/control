@@ -14,7 +14,6 @@ Vcs-Browser: https://salsa.debian.org/debian/bspwm
 
 Package: bspwm
 Architecture: any
-Section: x11
 Depends: ${shlibs:Depends},
  ${misc:Depends},
  x11-utils,

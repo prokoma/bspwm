@@ -1,6 +1,8 @@
 bspwm (0.9.8-1) unstable; urgency=medium
 
   * New upstream release.
+  * Update d/control.
+    - Remove duplicate section.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Mon, 05 Aug 2019 11:58:13 +0900
 
