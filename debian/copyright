@@ -1,4 +1,4 @@
-Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 upstream-name: bspwm
 upstream-contact: Bastien Dejean <nihilhill@gmail.com>
 Source: https://github.com/baskerville/bspwm
@@ -8,7 +8,7 @@ Copyright: 2012, Bastien Dejean <nihilhill@gmail.com>
 License: BSD-2-clause
 
 Files: debian/*
-Copyright: Copyright 2016, Nobuhiro Iwamatsu <iwamatsu@debian.org>
+Copyright: Copyright 2016-2019 Nobuhiro Iwamatsu <iwamatsu@debian.org>
 License: BSD-2-clause
 
 License: BSD-2-clause

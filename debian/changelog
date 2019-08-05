@@ -5,6 +5,9 @@ bspwm (0.9.8-1) unstable; urgency=medium
     - Remove duplicate section.
     - Bump debhelper compat up to 12.
     - Bump Standards-Version to 4.4.0.
+  * Update d/copyright.
+    - Get rid of lintian 'insecure-copyright-format-uri'.
+    - Bump copyright year.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Mon, 05 Aug 2019 11:58:13 +0900
 
