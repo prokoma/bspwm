@@ -4,6 +4,7 @@ bspwm (0.9.8-1) unstable; urgency=medium
   * Update d/control.
     - Remove duplicate section.
     - Bump debhelper compat up to 12.
+    - Bump Standards-Version to 4.4.0.
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Mon, 05 Aug 2019 11:58:13 +0900
 
