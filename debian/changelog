@@ -1,4 +1,4 @@
-bspwm (0.9.9-3) UNRELEASED; urgency=medium
+bspwm (0.9.9-3) unstable; urgency=medium
 
   *Update d/control.
     - Bump Standards-Version to 4.5.0.
