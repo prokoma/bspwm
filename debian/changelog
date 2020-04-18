@@ -43,7 +43,7 @@ bspwm (0.9.7-2) unstable; urgency=medium
 
  -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Tue, 23 Jul 2019 05:17:08 +0900
 
- bspwm (0.9.7-1) experimental; urgency=medium
+bspwm (0.9.7-1) experimental; urgency=medium
 
   * New upstream release.
   * Add libxcb-shape0-dev to B-D.
