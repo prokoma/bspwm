@@ -1,5 +1,7 @@
 bspwm (0.9.9-3) UNRELEASED; urgency=medium
 
+  *Update d/control.
+    - Bump Standards-Version to 4.5.0.
   * Fix build with gcc-10 (Closes: #957060)
     - Add d/patches/0001-Add-fcommon-to-CFLAGS-Closes-957060.patch
 
