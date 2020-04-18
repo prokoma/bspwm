@@ -1,0 +1,26 @@
+From b4c0b72476f6ab6316aeb2fff07ebe5ca095df82 Mon Sep 17 00:00:00 2001
+From: Nobuhiro Iwamatsu <iwamatsu@debian.org>
+Date: Sat, 18 Apr 2020 14:40:57 +0900
+Subject: [PATCH] Add -fcommon to CFLAGS (Closes: #957060)
+
+Signed-off-by: Nobuhiro Iwamatsu <iwamatsu@debian.org>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 6983939..ebe750f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,7 +2,7 @@ VERCMD  ?= git describe 2> /dev/null
+ VERSION := $(shell $(VERCMD) || cat VERSION)
+ 
+ CPPFLAGS += -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\"
+-CFLAGS   += -std=c99 -pedantic -Wall -Wextra -DJSMN_STRICT
++CFLAGS   += -std=c99 -pedantic -Wall -Wextra -DJSMN_STRICT -fcommon
+ LDFLAGS  ?=
+ LDLIBS    = $(LDFLAGS) -lm -lxcb -lxcb-util -lxcb-keysyms -lxcb-icccm -lxcb-ewmh -lxcb-randr -lxcb-xinerama -lxcb-shape
+ 
+-- 
+2.26.0
+

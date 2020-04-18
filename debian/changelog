@@ -1,3 +1,10 @@
+bspwm (0.9.9-3) UNRELEASED; urgency=medium
+
+  * Fix build with gcc-10 (Closes: #957060)
+    - Add d/patches/0001-Add-fcommon-to-CFLAGS-Closes-957060.patch
+
+ -- Nobuhiro Iwamatsu <iwamatsu@debian.org>  Sat, 18 Apr 2020 14:41:53 +0900
+
 bspwm (0.9.9-2) unstable; urgency=medium
 
   [Debian Janitor <janitor@jelmer.uk>]
