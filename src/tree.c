@@ -431,6 +431,8 @@ node_t *insert_node(monitor_t *m, desktop_t *d, node_t *n, node_t *f)
 		}
 	}
 
+	m->sticky_count += sticky_count(n);
+
 	propagate_flags_upward(m, d, n);
 
 	if (d->focus == NULL && is_focusable(n)) {
@@ -839,6 +841,48 @@ node_t *first_focusable_leaf(node_t *n)
 	return NULL;
 }
 
+node_t *next_node(node_t *n)
+{
+	if (n == NULL) {
+		return NULL;
+	}
+
+	if (n->second_child != NULL) {
+		return first_extrema(n->second_child);
+	} else {
+		node_t *p = n;
+		while (is_second_child(p)) {
+			p = p->parent;
+		}
+		if (is_first_child(p)) {
+			return p->parent;
+		} else {
+			return NULL;
+		}
+	}
+}
+
+node_t *prev_node(node_t *n)
+{
+	if (n == NULL) {
+		return NULL;
+	}
+
+	if (n->first_child != NULL) {
+		return second_extrema(n->first_child);
+	} else {
+		node_t *p = n;
+		while (is_first_child(p)) {
+			p = p->parent;
+		}
+		if (is_second_child(p)) {
+			return p->parent;
+		} else {
+			return NULL;
+		}
+	}
+}
+
 node_t *next_leaf(node_t *n, node_t *r)
 {
 	if (n == NULL) {
@@ -1014,6 +1058,21 @@ bool find_any_node_in(monitor_t *m, desktop_t *d, node_t *n, coordinates_t *ref,
 	}
 }
 
+void find_first_ancestor(coordinates_t *ref, coordinates_t *dst, node_select_t *sel)
+{
+	if (ref->node == NULL) {
+		return;
+	}
+
+	coordinates_t loc = {ref->monitor, ref->desktop, ref->node};
+	while ((loc.node = loc.node->parent) != NULL) {
+		if (node_matches(&loc, ref, sel)) {
+			*dst = loc;
+			return;
+		}
+	}
+}
+
 /* Based on https://github.com/ntrrgc/right-window */
 void find_nearest_neighbor(coordinates_t *ref, coordinates_t *dst, direction_t dir, node_select_t *sel)
 {
@@ -1080,7 +1139,7 @@ void find_by_area(area_peak_t ap, coordinates_t *ref, coordinates_t *dst, node_s
 		for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
 			for (node_t *f = first_extrema(d->root); f != NULL; f = next_leaf(f, d->root)) {
 				coordinates_t loc = {m, d, f};
-				if (f->client == NULL || f->vacant || !node_matches(&loc, ref, sel)) {
+				if (f->vacant || !node_matches(&loc, ref, sel)) {
 					continue;
 				}
 				unsigned int f_area = node_area(d, f);
@@ -1224,6 +1283,10 @@ void unlink_node(monitor_t *m, desktop_t *d, node_t *n)
 
 	node_t *p = n->parent;
 
+	if (m->sticky_count > 0) {
+		m->sticky_count -= sticky_count(n);
+	}
+
 	if (p == NULL) {
 		d->root = NULL;
 		d->focus = NULL;
@@ -1234,6 +1297,7 @@ void unlink_node(monitor_t *m, desktop_t *d, node_t *n)
 
 		history_remove(d, p, false);
 		cancel_presel(m, d, p);
+
 		if (p->sticky) {
 			m->sticky_count--;
 		}
@@ -1325,9 +1389,6 @@ void remove_node(monitor_t *m, desktop_t *d, node_t *n)
 	history_remove(d, n, true);
 	remove_stack_node(n);
 	cancel_presel_in(m, d, n);
-	if (m->sticky_count > 0) {
-		m->sticky_count -= sticky_count(n);
-	}
 	clients_count -= clients_count_in(n);
 	if (is_descendant(grabbed_node, n)) {
 		grabbed_node = NULL;
@@ -1599,7 +1660,7 @@ bool find_closest_node(coordinates_t *ref, coordinates_t *dst, cycle_dir_t dir, 
 	monitor_t *m = ref->monitor;
 	desktop_t *d = ref->desktop;
 	node_t *n = ref->node;
-	n = (dir == CYCLE_PREV ? prev_leaf(n, d->root) : next_leaf(n, d->root));
+	n = (dir == CYCLE_PREV ? prev_node(n) : next_node(n));
 
 #define HANDLE_BOUNDARIES(m, d, n)  \
 	while (n == NULL) { \
@@ -1620,11 +1681,11 @@ bool find_closest_node(coordinates_t *ref, coordinates_t *dst, cycle_dir_t dir, 
 
 	while (n != ref->node) {
 		coordinates_t loc = {m, d, n};
-		if (n->client != NULL && !n->hidden && node_matches(&loc, ref, sel)) {
+		if (node_matches(&loc, ref, sel)) {
 			*dst = loc;
 			return true;
 		}
-		n = (dir == CYCLE_PREV ? prev_leaf(n, d->root) : next_leaf(n, d->root));
+		n = (dir == CYCLE_PREV ? prev_node(n) : next_node(n));
 		HANDLE_BOUNDARIES(m, d, n);
 		if (ref->node == NULL && d == ref->desktop) {
 			break;
@@ -1815,7 +1876,9 @@ void set_floating(monitor_t *m, desktop_t *d, node_t *n, bool value)
 	}
 
 	cancel_presel(m, d, n);
-	set_vacant(m, d, n, value);
+	if (!n->hidden) {
+		set_vacant(m, d, n, value);
+	}
 
 	if (!value && d->focus == n) {
 		neutralize_occluding_windows(m, d, n);
@@ -1833,7 +1896,9 @@ void set_fullscreen(monitor_t *m, desktop_t *d, node_t *n, bool value)
 	client_t *c = n->client;
 
 	cancel_presel(m, d, n);
-	set_vacant(m, d, n, value);
+	if (!n->hidden) {
+		set_vacant(m, d, n, value);
+	}
 
 	if (value) {
 		c->wm_flags |= WM_FLAG_FULLSCREEN;
