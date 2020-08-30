@@ -1,4 +1,4 @@
-bspwm (0.9.10-2) UNRELEASED; urgency=medium
+bspwm (0.9.10-2) unstable; urgency=medium
 
   * Fix install path of zsh completion file. (Closes: #966539)
 
