@@ -1,5 +1,6 @@
 #!/usr/bin/make -f
 
+export ZSHCPL=/usr/share/zsh/vendor-completions
 export PREFIX=/usr
 
 %:
