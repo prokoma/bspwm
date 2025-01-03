@@ -49,6 +49,7 @@
 #define BORDERLESS_MONOCLE          false
 #define GAPLESS_MONOCLE             false
 #define SINGLE_MONOCLE              false
+#define BORDERLESS_SINGLETON        false
 
 #define FOCUS_FOLLOWS_POINTER       false
 #define POINTER_FOLLOWS_FOCUS       false
@@ -60,7 +61,7 @@
 #define IGNORE_EWMH_STRUTS          false
 
 #define CENTER_PSEUDO_TILED         true
-#define HONOR_SIZE_HINTS            false
+#define HONOR_SIZE_HINTS            HONOR_SIZE_HINTS_NO
 #define MAPPING_EVENTS_COUNT        1
 
 #define REMOVE_DISABLED_MONITORS    false
@@ -94,6 +95,7 @@ extern bool presel_feedback;
 extern bool borderless_monocle;
 extern bool gapless_monocle;
 extern bool single_monocle;
+extern bool borderless_singleton;
 
 extern bool focus_follows_pointer;
 extern bool pointer_follows_focus;
@@ -105,7 +107,7 @@ extern bool ignore_ewmh_struts;
 extern state_transition_t ignore_ewmh_fullscreen;
 
 extern bool center_pseudo_tiled;
-extern bool honor_size_hints;
+extern honor_size_hints_mode_t honor_size_hints;
 
 extern bool remove_disabled_monitors;
 extern bool remove_unplugged_monitors;

@@ -81,7 +81,9 @@ bool manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 
 	if (!ignore_ewmh_struts && ewmh_handle_struts(win)) {
 		for (monitor_t *m = mon_head; m != NULL; m = m->next) {
-			arrange(m, m->desk);
+			for (desktop_t *d = m->desk_head; d != NULL; d = d->next) {
+				arrange(m, d);
+			}
 		}
 	}
 
@@ -181,6 +183,10 @@ bool manage_window(xcb_window_t win, rule_consequence_t *csq, int fd)
 
 	if (csq->state != NULL) {
 		set_state(m, d, n, *(csq->state));
+	}
+
+	if (csq->honor_size_hints != HONOR_SIZE_HINTS_DEFAULT) {
+		c->honor_size_hints = csq->honor_size_hints;
 	}
 
 	set_hidden(m, d, n, csq->hidden);
@@ -572,6 +578,7 @@ bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy, bool 
 			sr = MAX(0, sr);
 			sr = MIN(1, sr);
 			vertical_fence->split_ratio = sr;
+			adjust_ratios(vertical_fence, vertical_fence->rectangle);
 		}
 		if (horizontal_fence != NULL) {
 			double sr = 0.0;
@@ -583,9 +590,8 @@ bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy, bool 
 			sr = MAX(0, sr);
 			sr = MIN(1, sr);
 			horizontal_fence->split_ratio = sr;
+			adjust_ratios(horizontal_fence, horizontal_fence->rectangle);
 		}
-		node_t *target_fence = horizontal_fence != NULL ? horizontal_fence : vertical_fence;
-		adjust_ratios(target_fence, target_fence->rectangle);
 		arrange(loc->monitor, loc->desktop);
 	} else {
 		int w = width, h = height;
@@ -630,16 +636,12 @@ bool resize_client(coordinates_t *loc, resize_handle_t rh, int dx, int dy, bool 
 /* taken from awesomeWM */
 void apply_size_hints(client_t *c, uint16_t *width, uint16_t *height)
 {
-	if (!honor_size_hints) {
+	if (!SHOULD_HONOR_SIZE_HINTS(c->honor_size_hints, c->state)) {
 		return;
 	}
 
 	int32_t minw = 0, minh = 0;
 	int32_t basew = 0, baseh = 0, real_basew = 0, real_baseh = 0;
-
-	if (c->state == STATE_FULLSCREEN) {
-		return;
-	}
 
 	if (c->size_hints.flags & XCB_ICCCM_SIZE_HINT_BASE_SIZE) {
 		basew = c->size_hints.base_width;

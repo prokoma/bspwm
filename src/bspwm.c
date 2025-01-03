@@ -30,11 +30,13 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <string.h>
 #include <xcb/xinerama.h>
+#include <xcb/xcb_aux.h>
 #include "types.h"
 #include "desktop.h"
 #include "monitor.h"
@@ -190,6 +192,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	fcntl(sock_fd, F_SETFD, FD_CLOEXEC | fcntl(sock_fd, F_GETFD));
+
 	signal(SIGINT, sig_handler);
 	signal(SIGHUP, sig_handler);
 	signal(SIGTERM, sig_handler);
@@ -245,6 +249,7 @@ int main(int argc, char *argv[])
 			}
 
 			if (FD_ISSET(dpy_fd, &descriptors)) {
+				xcb_aux_sync(dpy);
 				while ((event = xcb_poll_for_event(dpy)) != NULL) {
 					handle_event(event);
 					free(event);
@@ -282,6 +287,8 @@ int main(int argc, char *argv[])
 	xcb_disconnect(dpy);
 
 	if (restart) {
+		fcntl(sock_fd, F_SETFD, ~FD_CLOEXEC & fcntl(sock_fd, F_GETFD));
+
 		int rargc;
 		for (rargc = 0; rargc < argc; rargc++) {
 			if (streq("-s", argv[rargc])) {
@@ -305,7 +312,9 @@ int main(int argc, char *argv[])
 		rargv[rargc + 3] = sock_fd_arg;
 		rargv[rargc + 4] = 0;
 
-		exit_status = execvp(*rargv, rargv);
+		execvp(*rargv, rargv);
+
+		exit_status = 1;
 		free(rargv);
 	}
 

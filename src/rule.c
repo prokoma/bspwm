@@ -81,9 +81,17 @@ void remove_rule(rule_t *r)
 void remove_rule_by_cause(char *cause)
 {
 	rule_t *r = rule_head;
-	char *class_name = strtok(cause, COL_TOK);
-	char *instance_name = strtok(NULL, COL_TOK);
-	char *name = strtok(NULL, COL_TOK);
+	struct tokenize_state state;
+	char *class_name = tokenize_with_escape(&state, cause, COL_TOK[0]);
+	char *instance_name = tokenize_with_escape(&state, NULL, COL_TOK[0]);
+	char *name = tokenize_with_escape(&state, NULL, COL_TOK[0]);
+	if (!class_name || !instance_name || !name) {
+		free(class_name);
+		free(instance_name);
+		free(name);
+		return;
+	}
+
 	while (r != NULL) {
 		rule_t *next = r->next;
 		if ((class_name != NULL && (streq(class_name, MATCH_ANY) || streq(r->class_name, class_name))) &&
@@ -93,6 +101,9 @@ void remove_rule_by_cause(char *cause)
 		}
 		r = next;
 	}
+	free(class_name);
+	free(instance_name);
+	free(name);
 }
 
 bool remove_rule_by_index(int idx)
@@ -113,6 +124,7 @@ rule_consequence_t *make_rule_consequence(void)
 	rc->layer = NULL;
 	rc->state = NULL;
 	rc->rect = NULL;
+	rc->honor_size_hints = HONOR_SIZE_HINTS_DEFAULT;
 	return rc;
 }
 
@@ -421,6 +433,10 @@ void parse_key_value(char *key, char *value, rule_consequence_t *csq)
 		if (!parse_rectangle(value, csq->rect)) {
 			free(csq->rect);
 			csq->rect = NULL;
+		}
+	} else if (streq("honor_size_hints", key)) {
+		if (!parse_honor_size_hints_mode(value, &csq->honor_size_hints)) {
+			csq->honor_size_hints = HONOR_SIZE_HINTS_DEFAULT;
 		}
 	} else if (parse_bool(value, &v)) {
 		if (streq("hidden", key)) {

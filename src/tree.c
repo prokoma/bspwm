@@ -89,7 +89,9 @@ void apply_layout(monitor_t *m, desktop_t *d, node_t *n, xcb_rectangle_t rect, x
 		}
 
 		unsigned int bw;
+		bool the_only_window = !m->prev && !m->next && d->root->client;
 		if ((borderless_monocle && d->layout == LAYOUT_MONOCLE && IS_TILED(n->client))
+		    || (borderless_singleton && the_only_window)
 		    || n->client->state == STATE_FULLSCREEN) {
 			bw = 0;
 		} else {
@@ -188,13 +190,26 @@ presel_t *make_presel(void)
 	return p;
 }
 
-void set_ratio(node_t *n, double rat)
+bool set_type(node_t *n, split_type_t typ)
 {
-	if (n == NULL) {
-		return;
+	if (n == NULL || n->split_type == typ) {
+		return false;
+	}
+
+	n->split_type = typ;
+	update_constraints(n);
+	rebuild_constraints_towards_root(n);
+	return true;
+}
+
+bool set_ratio(node_t *n, double rat)
+{
+	if (n == NULL || n->split_ratio == rat) {
+		return false;
 	}
 
 	n->split_ratio = rat;
+	return true;
 }
 
 void presel_dir(monitor_t *m, desktop_t *d, node_t *n, direction_t dir)
@@ -278,6 +293,8 @@ node_t *insert_node(monitor_t *m, desktop_t *d, node_t *n, node_t *f)
 	if (d == NULL || n == NULL) {
 		return NULL;
 	}
+
+	bool d_was_not_occupied = d->root == NULL;
 
 	/* n: inserted node */
 	/* c: new internal node */
@@ -431,12 +448,14 @@ node_t *insert_node(monitor_t *m, desktop_t *d, node_t *n, node_t *f)
 		}
 	}
 
-	m->sticky_count += sticky_count(n);
-
 	propagate_flags_upward(m, d, n);
 
 	if (d->focus == NULL && is_focusable(n)) {
 		d->focus = n;
+	}
+
+	if (d_was_not_occupied) {
+		put_status(SBSC_MASK_REPORT);
 	}
 
 	return f;
@@ -446,6 +465,7 @@ void insert_receptacle(monitor_t *m, desktop_t *d, node_t *n)
 {
 	node_t *r = make_node(XCB_NONE);
 	insert_node(m, d, r, n);
+	put_status(SBSC_MASK_NODE_ADD, "node_add 0x%08X 0x%08X 0x%08X 0x%08X\n", m->id, d->id, n != NULL ? n->id : 0, r->id);
 
 	if (single_monocle && d->layout == LAYOUT_MONOCLE && tiled_count(d->root, true) > 1) {
 		set_layout(m, d, d->user_layout, false);
@@ -609,9 +629,36 @@ bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 
 	draw_border(n, true, true);
 
-	focus_desktop(m, d);
+	bool desk_changed = (m != mon || m->desk != d);
+	bool has_input_focus = false;
+
+	if (mon != m) {
+		mon = m;
+
+		if (pointer_follows_monitor) {
+			center_pointer(m->rectangle);
+		}
+
+		put_status(SBSC_MASK_MONITOR_FOCUS, "monitor_focus 0x%08X\n", m->id);
+	}
+
+	if (m->desk != d) {
+		show_desktop(d);
+		set_input_focus(n);
+		has_input_focus = true;
+		hide_desktop(m->desk);
+		m->desk = d;
+	}
+
+	if (desk_changed) {
+		ewmh_update_current_desktop();
+		put_status(SBSC_MASK_DESKTOP_FOCUS, "desktop_focus 0x%08X 0x%08X\n", m->id, d->id);
+	}
 
 	d->focus = n;
+	if (!has_input_focus) {
+		set_input_focus(n);
+	}
 	ewmh_update_active_window();
 	history_add(m, d, n, true);
 
@@ -627,7 +674,6 @@ bool focus_node(monitor_t *m, desktop_t *d, node_t *n)
 	put_status(SBSC_MASK_NODE_FOCUS, "node_focus 0x%08X 0x%08X 0x%08X\n", m->id, d->id, n->id);
 
 	stack(d, n, true);
-	set_input_focus(n);
 
 	if (pointer_follows_focus) {
 		center_pointer(get_rectangle(m, d, n));
@@ -712,6 +758,7 @@ client_t *make_client(void)
 	c->icccm_props.take_focus = false;
 	c->icccm_props.delete_window = false;
 	c->size_hints.flags = 0;
+	c->honor_size_hints = honor_size_hints;
 	return c;
 }
 
@@ -1155,7 +1202,8 @@ void find_by_area(area_peak_t ap, coordinates_t *ref, coordinates_t *dst, node_s
 void rotate_tree(node_t *n, int deg)
 {
 	rotate_tree_rec(n, deg);
-	rebuild_constraints(n);
+	rebuild_constraints_from_leaves(n);
+	rebuild_constraints_towards_root(n);
 }
 
 void rotate_tree_rec(node_t *n, int deg)
@@ -1239,7 +1287,8 @@ int balance_tree(node_t *n)
  * despite the potential alteration of their rectangle. */
 void adjust_ratios(node_t *n, xcb_rectangle_t rect)
 {
-	if (n == NULL) {
+#define NULL_OR_VACANT(n) ((n) == NULL || (n)->vacant)
+	if (NULL_OR_VACANT(n)) {
 		return;
 	}
 
@@ -1260,6 +1309,16 @@ void adjust_ratios(node_t *n, xcb_rectangle_t rect)
 	xcb_rectangle_t first_rect;
 	xcb_rectangle_t second_rect;
 	unsigned int fence;
+
+	if (NULL_OR_VACANT(n->first_child)) {
+		adjust_ratios(n->second_child, rect);
+		return;
+	}
+	if (NULL_OR_VACANT(n->second_child)) {
+		adjust_ratios(n->first_child, rect);
+		return;
+	}
+#undef NULL_OR_VACANT
 
 	if (n->split_type == TYPE_VERTICAL) {
 		fence = rect.width * n->split_ratio;
@@ -1283,13 +1342,10 @@ void unlink_node(monitor_t *m, desktop_t *d, node_t *n)
 
 	node_t *p = n->parent;
 
-	if (m->sticky_count > 0) {
-		m->sticky_count -= sticky_count(n);
-	}
-
 	if (p == NULL) {
 		d->root = NULL;
 		d->focus = NULL;
+		put_status(SBSC_MASK_REPORT);
 	} else {
 		if (d->focus == p || is_descendant(d->focus, n)) {
 			d->focus = NULL;
@@ -1370,13 +1426,16 @@ void kill_node(monitor_t *m, desktop_t *d, node_t *n)
 		return;
 	}
 
-	for (node_t *f = first_extrema(n); f != NULL; f = next_leaf(f, n)) {
-		if (f->client != NULL) {
-			xcb_kill_client(dpy, f->id);
+	if (IS_RECEPTACLE(n)) {
+		put_status(SBSC_MASK_NODE_REMOVE, "node_remove 0x%08X 0x%08X 0x%08X\n", m->id, d->id, n->id);
+		remove_node(m, d, n);
+	} else {
+		for (node_t *f = first_extrema(n); f != NULL; f = next_leaf(f, n)) {
+			if (f->client != NULL) {
+				xcb_kill_client(dpy, f->id);
+			}
 		}
 	}
-
-	remove_node(m, d, n);
 }
 
 void remove_node(monitor_t *m, desktop_t *d, node_t *n)
@@ -1389,6 +1448,9 @@ void remove_node(monitor_t *m, desktop_t *d, node_t *n)
 	history_remove(d, n, true);
 	remove_stack_node(n);
 	cancel_presel_in(m, d, n);
+	if (m->sticky_count > 0 && d == m->desk) {
+		m->sticky_count -= sticky_count(n);
+	}
 	clients_count -= clients_count_in(n);
 	if (is_descendant(grabbed_node, n)) {
 		grabbed_node = NULL;
@@ -1543,14 +1605,22 @@ bool swap_nodes(monitor_t *m1, desktop_t *d1, node_t *n1, monitor_t *m2, desktop
 			draw_border(n1, is_descendant(n1, d2->focus), (m2 == mon));
 		}
 	} else {
-		draw_border(n1, is_descendant(n1, d2->focus), (m2 == mon));
-		draw_border(n2, is_descendant(n2, d1->focus), (m1 == mon));
+		if (!n1_held_focus) {
+			draw_border(n1, is_descendant(n1, d2->focus), (m2 == mon));
+		}
+		if (!n2_held_focus) {
+			draw_border(n2, is_descendant(n2, d1->focus), (m1 == mon));
+		}
 	}
 
 	arrange(m1, d1);
 
 	if (d1 != d2) {
 		arrange(m2, d2);
+	} else {
+		if (pointer_follows_focus && (n1_held_focus || n2_held_focus)) {
+			center_pointer(get_rectangle(m1, d1, d1->focus));
+		}
 	}
 
 	return true;
@@ -1562,7 +1632,8 @@ bool transfer_node(monitor_t *ms, desktop_t *ds, node_t *ns, monitor_t *md, desk
 		return false;
 	}
 
-	if (sticky_still && ms->sticky_count > 0 && sticky_count(ns) > 0 && dd != md->desk) {
+	unsigned int sc = (ms->sticky_count > 0 && ds == ms->desk) ? sticky_count(ns) : 0;
+	if (sticky_still && sc > 0 && dd != md->desk) {
 		return false;
 	}
 
@@ -1584,6 +1655,8 @@ bool transfer_node(monitor_t *ms, desktop_t *ds, node_t *ns, monitor_t *md, desk
 		if (ns->client == NULL || monitor_from_client(ns->client) != md) {
 			adapt_geometry(&ms->rectangle, &md->rectangle, ns);
 		}
+		ms->sticky_count -= sc;
+		md->sticky_count += sc;
 	}
 
 	if (ds != dd) {
@@ -1930,15 +2003,30 @@ void neutralize_occluding_windows(monitor_t *m, desktop_t *d, node_t *n)
 	}
 }
 
-void rebuild_constraints(node_t *n)
+void rebuild_constraints_from_leaves(node_t *n)
 {
 	if (n == NULL || is_leaf(n)) {
 		return;
 	} else {
-		rebuild_constraints(n->first_child);
-		rebuild_constraints(n->second_child);
+		rebuild_constraints_from_leaves(n->first_child);
+		rebuild_constraints_from_leaves(n->second_child);
 		update_constraints(n);
 	}
+}
+
+void rebuild_constraints_towards_root(node_t *n)
+{
+	if (n == NULL) {
+		return;
+	}
+
+	node_t *p = n->parent;
+
+	if (p != NULL) {
+		update_constraints(p);
+	}
+
+	rebuild_constraints_towards_root(p);
 }
 
 void update_constraints(node_t *n)
